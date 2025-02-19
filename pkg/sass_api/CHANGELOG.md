@@ -1,3 +1,293 @@
+## 15.2.1-dev
+
+* No user-visible changes.
+
+## 15.2.0
+
+* No user-visible changes.
+
+## 15.1.0
+
+* No user-visible changes.
+
+## 15.0.5-dev
+
+* No user-visible changes.
+
+## 15.0.4
+
+* No user-visible changes.
+
+## 15.0.3
+
+* No user-visible changes.
+
+## 15.0.2
+
+* No user-visible changes.
+
+## 15.0.1
+
+* No user-visible changes.
+
+## 15.0.0
+
+* Rename `ArgumentInvocation` to `ArgumentList`, `ArgumentDeclaration` to
+  `ParameterList`, and `Argument` to `Parameter` to better match the
+  conventional distinction between "arguments" and "parameters".
+
+* Rename `ArgumentDeclaration.arguments` to `ParameterList.parameters`,
+  `ArgumentDeclaration.restArgument` to `ParameterList.restParameter`,
+  `CallableDeclaration.arguments` to `.parameters`.
+
+## 14.4.1-dev
+
+* No user-visible changes.
+
+## 14.4.0
+
+* No user-visible changes.
+
+## 14.3.0
+
+* Add `NodePackageImporter`, which loads `pkg:` URLs from `node_modules` within
+  the provided `entryPointDirectory`.
+
+## 14.2.0
+
+* No user-visible changes.
+
+## 14.1.3
+
+* No user-visible changes.
+
+## 14.1.2
+
+* No user-visible changes.
+
+## 14.1.1
+
+* No user-visible changes.
+
+## 14.1.0
+
+* Add `Expression.isCalculationSafe`, which returns true when this expression
+  can safely be used in a calculation.
+
+## 14.0.0
+
+* **Breaking change:** Warnings are no longer emitted during parsing, so the
+  `logger` parameter has been removed from the following:
+
+  * `ArgumentDeclaration.parse()`, `ComplexSelector.parse()`,
+    `CompoundSelector.parse()`, `Expression.parse()`, `SelectorList.parse()`,
+    and `SimpleSelector.parse()`.
+
+  * `Stylesheet.parse()`, `Stylesheet.parseCss()`, `Stylesheet.parseSass()`,
+    and `Stylesheet.parseScss()`.
+
+  * The `AsyncImportCache` and `ImportCache` constructors.
+
+  Additionally, the `quiet` parameter has been removed from
+  `AsyncImportCache.importCanonical()` and `ImportCache.importCanonical()`, and
+  `AsyncImportCache.wrapLogger()` and `ImportCache.wrapLogger()` have been
+  removed entirely.
+
+## 13.1.2
+
+* No user-visible changes.
+
+## 13.1.1
+
+* Make `AsyncImportCache.wrapLogger()` and `ImportCache.wrapLogger()` always
+  limit the repetition of deprecations. this is unlikely to be the long-term
+  behavior, but it's necessary to avoid flooding users with deprecations in the
+  short term.
+
+## 13.1.0
+
+* Add `AsyncImportCache.wrapLogger()` and `ImportCache.wrapLogger()` methods,
+  which wrap a given logger to apply deprecation options to it.
+
+## 13.0.1
+
+* Fix a bug where `LoudComment`s parsed from the indented syntax would include
+  whitespace after the closing `*/`.
+
+## 13.0.0
+
+* The `Interpolation()` constructor now takes an additional `List<FileSpan?>`
+  spans argument which cover the `#{}` for expression elements.
+
+* Added a new `Interpolation.plain()` constructor for interpolations that only
+  contain a single plain-text string.
+
+* Added `Interpolation.spanForElement()` which returns the span that covers a
+  single element of `contents`.
+
+* `InterpolationBuffer.add()` now takes a `FileSpan` that covers the `#{}`
+  around the expression.
+
+## 12.0.5
+
+* No user-visible changes.
+
+## 12.0.4
+
+* No user-visible changes.
+
+## 12.0.3
+
+* No user-visible changes.
+
+## 12.0.2
+
+* No user-visible changes.
+
+## 12.0.1
+
+* No user-visible changes.
+
+## 12.0.0
+
+* **Breaking change:** Remove the `SassApiColor.hasCalculatedRgb` and
+  `.hasCalculatedHsl` extension methods. These can now be determined by checking
+  if `SassColor.space` is `KnownColorSpace.rgb` or `KnownColorSpace.hsl`,
+  respectively.
+
+* Added a `ColorSpace` class which represents the various color spaces defined
+  in the CSS spec.
+
+* Added `SassColor.space` which returns a color's color space.
+
+* Added `SassColor.channels` and `.channelsOrNull` which returns a list
+  of channel values, with missing channels converted to 0 or exposed as null,
+  respectively.
+
+* Added `SassColor.isLegacy`, `.isInGamut`, `.channel()`, `.isChannelMissing()`,
+  `.isChannelPowerless()`, `.toSpace()`, `.toGamut()`, `.changeChannels()`, and
+  `.interpolate()` which do the same thing as the Sass functions of the
+  corresponding names.
+
+* `SassColor.rgb()` now allows out-of-bounds and non-integer arguments.
+
+* `SassColor.hsl()` and `.hwb()` now allow out-of-bounds arguments.
+
+* Added `SassColor.hwb()`, `.srgb()`, `.srgbLinear()`, `.displayP3()`,
+  `.a98Rgb()`, `.prophotoRgb()`, `.rec2020()`, `.xyzD50()`, `.xyzD65()`,
+  `.lab()`, `.lch()`, `.oklab()`, `.oklch()`, and `.forSpace()` constructors.
+
+* Deprecated `SassColor.red`, `.green`, `.blue`, `.hue`, `.saturation`,
+  `.lightness`, `.whiteness`, and `.blackness` in favor of
+  `SassColor.channel()`.
+
+* Deprecated `SassColor.changeRgb()`, `.changeHsl()`, and `.changeHwb()` in
+  favor of `SassColor.changeChannels()`.
+
+* Added `SassNumber.convertValueToUnit()` as a shorthand for
+  `SassNumber.convertValue()` with a single numerator.
+
+* Added `InterpolationMethod` and `HueInterpolationMethod` which collectively
+  represent the method to use to interpolate two colors.
+
+* Added the `SassApiColorSpace` extension to expose additional members of
+  `ColorSpace`.
+
+* Added the `ColorChannel` class to represent information about a single channel
+  of a color space.
+
+* Added `SassNumber.convertValueToUnit()` as a shorthand for
+  `SassNumber.convertValue()` with a single numerator.
+
+## 11.1.0
+
+* Loud comments in the Sass syntax no longer automatically inject ` */` to the
+  end when parsed.
+
+## 11.0.0
+
+* Remove the `CallableDeclaration()` constructor.
+
+## 10.4.8
+
+* No user-visible changes.
+
+## 10.4.7
+
+* No user-visible changes.
+
+## 10.4.6
+
+* No user-visible changes.
+
+## 10.4.5
+
+* No user-visible changes.
+
+## 10.4.4
+
+* No user-visible changes.
+
+## 10.4.3
+
+* No user-visible changes.
+
+## 10.4.2
+
+* No user-visible changes.
+
+## 10.4.1
+
+* No user-visible changes.
+
+## 10.4.0
+
+* No user-visible changes.
+
+## 10.3.0
+
+* No user-visible changes.
+
+## 10.2.1
+
+* No user-visible changes.
+
+## 10.2.0
+
+* No user-visible changes.
+
+## 10.1.1
+
+* No user-visible changes.
+
+## 10.1.0
+
+* No user-visible changes.
+
+## 10.0.0
+
+* Remove the `allowPlaceholders` argument from `SelectorList.parse()`. Instead,
+  it now has a more generic `plainCss` argument which tells it to parse the
+  selector in plain CSS mode.
+
+* Rename `SelectorList.resolveParentSelectors` to `SelectorList.nestWithin`.
+
+## 9.5.0
+
+* No user-visible changes.
+
+## 9.4.2
+
+* No user-visible changes.
+
+## 9.4.1
+
+* No user-visible changes.
+
+## 9.4.0
+
+* No user-visible changes.
+
 ## 9.3.0
 
 * No user-visible changes.
@@ -71,7 +361,7 @@
 
 * All uses of classes from the `tuple` package have been replaced by record
   types.
-  
+
 ## 7.2.2
 
 * No user-visible changes.
@@ -208,8 +498,6 @@
 * No user-visible changes.
 
 ## 4.0.0
-
-### Dart API
 
 * **Breaking change:** The first argument to `NumberExpression()` is now a
   `double` rather than a `num`.

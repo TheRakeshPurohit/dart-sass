@@ -54,8 +54,21 @@ class SassList extends Value {
         _hasBrackets = brackets {
     if (separator == ListSeparator.undecided && asList.length > 1) {
       throw ArgumentError(
-          "A list with more than one element must have an explicit separator.");
+        "A list with more than one element must have an explicit separator.",
+      );
     }
+  }
+
+  /// Add parentheses to the debug information for lists to help make the list
+  /// bounds clear.
+  String toString() {
+    if (hasBrackets ||
+        lengthAsList == 0 ||
+        (lengthAsList == 1 && separator == ListSeparator.comma)) {
+      return super.toString();
+    }
+
+    return "(${super.toString()})";
   }
 
   /// @nodoc

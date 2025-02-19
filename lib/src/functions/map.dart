@@ -15,26 +15,29 @@ import '../value.dart';
 
 /// The global definitions of Sass map functions.
 final global = UnmodifiableListView([
-  _get.withName("map-get"),
-  _merge.withName("map-merge"),
-  _remove.withName("map-remove"),
-  _keys.withName("map-keys"),
-  _values.withName("map-values"),
-  _hasKey.withName("map-has-key")
+  _get.withDeprecationWarning('map').withName("map-get"),
+  _merge.withDeprecationWarning('map').withName("map-merge"),
+  _remove.withDeprecationWarning('map').withName("map-remove"),
+  _keys.withDeprecationWarning('map').withName("map-keys"),
+  _values.withDeprecationWarning('map').withName("map-values"),
+  _hasKey.withDeprecationWarning('map').withName("map-has-key"),
 ]);
 
 /// The Sass map module.
-final module = BuiltInModule("map", functions: <Callable>[
-  _get,
-  _set,
-  _merge,
-  _remove,
-  _keys,
-  _values,
-  _hasKey,
-  _deepMerge,
-  _deepRemove
-]);
+final module = BuiltInModule(
+  "map",
+  functions: <Callable>[
+    _get,
+    _set,
+    _merge,
+    _remove,
+    _keys,
+    _values,
+    _hasKey,
+    _deepMerge,
+    _deepRemove,
+  ],
+);
 
 final _get = _function("get", r"$map, $key, $keys...", (arguments) {
   var map = arguments[0].assertMap("map");
@@ -61,7 +64,15 @@ final _set = BuiltInCallable.overloadedFunction("set", {
         throw SassScriptException("Expected \$args to contain a value.");
       case [...var keys, var value]:
         return _modify(map, keys, (_) => value);
-      default:
+      default: // ignore: unreachable_switch_default
+        // This code is unreachable, and the compiler knows it (hence the
+        // `unreachable_switch_default` warning being ignored above). However,
+        // due to architectural limitations in the Dart front end, the compiler
+        // doesn't understand that the code is unreachable until late in the
+        // compilation process (after flow analysis). So this `default` clause
+        // must be kept around to avoid flow analysis incorrectly concluding
+        // that the function fails to return. See
+        // https://github.com/dart-lang/language/issues/2977 for details.
         throw '[BUG] Unreachable code';
     }
   },
@@ -87,7 +98,15 @@ final _merge = BuiltInCallable.overloadedFunction("merge", {
           if (nestedMap == null) return map2;
           return SassMap({...nestedMap.contents, ...map2.contents});
         });
-      default:
+      default: // ignore: unreachable_switch_default
+        // This code is unreachable, and the compiler knows it (hence the
+        // `unreachable_switch_default` warning being ignored above). However,
+        // due to architectural limitations in the Dart front end, the compiler
+        // doesn't understand that the code is unreachable until late in the
+        // compilation process (after flow analysis). So this `default` clause
+        // must be kept around to avoid flow analysis incorrectly concluding
+        // that the function fails to return. See
+        // https://github.com/dart-lang/language/issues/2977 for details.
         throw '[BUG] Unreachable code';
     }
   },
@@ -99,8 +118,9 @@ final _deepMerge = _function("deep-merge", r"$map1, $map2", (arguments) {
   return _deepMergeImpl(map1, map2);
 });
 
-final _deepRemove =
-    _function("deep-remove", r"$map, $key, $keys...", (arguments) {
+final _deepRemove = _function("deep-remove", r"$map, $key, $keys...", (
+  arguments,
+) {
   var map = arguments[0].assertMap("map");
   var keys = [arguments[1], ...arguments[2].asList];
   return _modify(map, keys.exceptLast, (value) {
@@ -128,20 +148,26 @@ final _remove = BuiltInCallable.overloadedFunction("remove", {
       mutableMap.remove(key);
     }
     return SassMap(mutableMap);
-  }
+  },
 });
 
 final _keys = _function(
-    "keys",
-    r"$map",
-    (arguments) => SassList(
-        arguments[0].assertMap("map").contents.keys, ListSeparator.comma));
+  "keys",
+  r"$map",
+  (arguments) => SassList(
+    arguments[0].assertMap("map").contents.keys,
+    ListSeparator.comma,
+  ),
+);
 
 final _values = _function(
-    "values",
-    r"$map",
-    (arguments) => SassList(
-        arguments[0].assertMap("map").contents.values, ListSeparator.comma));
+  "values",
+  r"$map",
+  (arguments) => SassList(
+    arguments[0].assertMap("map").contents.values,
+    ListSeparator.comma,
+  ),
+);
 
 final _hasKey = _function("has-key", r"$map, $key, $keys...", (arguments) {
   var map = arguments[0].assertMap("map");
@@ -168,8 +194,12 @@ final _hasKey = _function("has-key", r"$map, $key, $keys...", (arguments) {
 ///
 /// If no keys are provided, this passes [map] directly to modify and returns
 /// the result.
-Value _modify(SassMap map, Iterable<Value> keys, Value modify(Value old),
-    {bool addNesting = true}) {
+Value _modify(
+  SassMap map,
+  Iterable<Value> keys,
+  Value modify(Value old), {
+  bool addNesting = true,
+}) {
   var keyIterator = keys.iterator;
   SassMap modifyNestedMap(SassMap map) {
     var mutableMap = Map.of(map.contents);
@@ -201,7 +231,10 @@ SassMap _deepMergeImpl(SassMap map1, SassMap map2) {
   var result = Map.of(map1.contents);
   for (var (key, value) in map2.contents.pairs) {
     if ((result[key]?.tryMap(), value.tryMap())
-        case (var resultMap?, var valueMap?)) {
+        case (
+          var resultMap?,
+          var valueMap?,
+        )) {
       var merged = _deepMergeImpl(resultMap, valueMap);
       if (identical(merged, resultMap)) continue;
       result[key] = merged;
@@ -215,5 +248,8 @@ SassMap _deepMergeImpl(SassMap map1, SassMap map2) {
 
 /// Like [BuiltInCallable.function], but always sets the URL to `sass:map`.
 BuiltInCallable _function(
-        String name, String arguments, Value callback(List<Value> arguments)) =>
+  String name,
+  String arguments,
+  Value callback(List<Value> arguments),
+) =>
     BuiltInCallable.function(name, arguments, callback, url: "sass:map");

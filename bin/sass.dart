@@ -13,8 +13,8 @@ import 'package:sass/src/executable/options.dart';
 import 'package:sass/src/executable/repl.dart';
 import 'package:sass/src/executable/watch.dart';
 import 'package:sass/src/import_cache.dart';
+import 'package:sass/src/importer/filesystem.dart';
 import 'package:sass/src/io.dart';
-import 'package:sass/src/logger/deprecation_handling.dart';
 import 'package:sass/src/stylesheet_graph.dart';
 import 'package:sass/src/utils.dart';
 import 'package:sass/src/embedded/executable.dart'
@@ -44,28 +44,34 @@ Future<void> main(List<String> args) async {
       return;
     }
 
-    var graph = StylesheetGraph(ImportCache(
+    // Eagerly check these so that we fail here and don't hang in watch mode.
+    options.silenceDeprecations;
+    options.futureDeprecations;
+    options.fatalDeprecations;
+
+    var graph = StylesheetGraph(
+      ImportCache(
+        importers: [...options.pkgImporters, FilesystemImporter.noLoadPath],
         loadPaths: options.loadPaths,
-        // This logger is only used for handling fatal/future deprecations
-        // during parsing, and is re-used across parses, so we don't want to
-        // limit repetition. A separate DeprecationHandlingLogger is created for
-        // each compilation, which will limit repetition if verbose is not
-        // passed in addition to handling fatal/future deprecations.
-        logger: DeprecationHandlingLogger(options.logger,
-            fatalDeprecations: options.fatalDeprecations,
-            futureDeprecations: options.futureDeprecations,
-            limitRepetition: false)));
+      ),
+    );
     if (options.watch) {
       await watch(options, graph);
       return;
     }
 
-    await compileStylesheets(options, graph, options.sourcesToDestinations,
-        ifModified: options.update);
+    await compileStylesheets(
+      options,
+      graph,
+      options.sourcesToDestinations,
+      ifModified: options.update,
+    );
   } on UsageException catch (error) {
     print("${error.message}\n");
-    print("Usage: sass <input.scss> [output.css]\n"
-        "       sass <input.scss>:<output.css> <input/>:<output/> <dir/>\n");
+    print(
+      "Usage: sass <input.scss> [output.css]\n"
+      "       sass <input.scss>:<output.css> <input/>:<output/> <dir/>\n",
+    );
     print(ExecutableOptions.usage);
     exitCode = 64;
   } catch (error, stackTrace) {
@@ -78,7 +84,8 @@ Future<void> main(List<String> args) async {
     buffer.writeln();
     buffer.writeln();
     buffer.write(
-        Trace.from(getTrace(error) ?? stackTrace).terse.toString().trimRight());
+      Trace.from(getTrace(error) ?? stackTrace).terse.toString().trimRight(),
+    );
     printError(buffer);
     exitCode = 255;
   }
@@ -95,8 +102,9 @@ Future<String> _loadVersion() async {
     return version;
   }
 
-  var libDir =
-      p.fromUri(await Isolate.resolvePackageUri(Uri.parse('package:sass/')));
+  var libDir = p.fromUri(
+    await Isolate.resolvePackageUri(Uri.parse('package:sass/')),
+  );
   var pubspec = readFile(p.join(libDir, '..', 'pubspec.yaml'));
   return pubspec
       .split("\n")

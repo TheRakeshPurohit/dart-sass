@@ -3,6 +3,7 @@
 // https://opensource.org/licenses/MIT.
 
 @TestOn('vm')
+library;
 
 import 'dart:io';
 
@@ -14,7 +15,7 @@ void main() {
   group("YAML files are valid:", () {
     for (var entry in [
       ...Directory.current.listSync(),
-      ...Directory("pkg").listSync(recursive: true)
+      ...Directory("pkg").listSync(recursive: true),
     ]) {
       if (entry is File &&
           (entry.path.endsWith(".yaml") || entry.path.endsWith(".yml"))) {

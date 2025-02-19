@@ -5,7 +5,7 @@
 import 'package:source_span/source_span.dart';
 
 import '../../../visitor/interface/statement.dart';
-import '../argument_invocation.dart';
+import '../argument_list.dart';
 import '../statement.dart';
 
 /// A `@content` rule.
@@ -14,11 +14,11 @@ import '../statement.dart';
 /// caller.
 ///
 /// {@category AST}
-final class ContentRule implements Statement {
+final class ContentRule extends Statement {
   /// The arguments pass to this `@content` rule.
   ///
   /// This will be an empty invocation if `@content` has no arguments.
-  final ArgumentInvocation arguments;
+  final ArgumentList arguments;
 
   final FileSpan span;
 

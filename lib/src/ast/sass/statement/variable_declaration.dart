@@ -6,7 +6,6 @@ import 'package:meta/meta.dart';
 import 'package:source_span/source_span.dart';
 
 import '../../../exception.dart';
-import '../../../logger.dart';
 import '../../../parse/scss.dart';
 import '../../../utils.dart';
 import '../../../util/span.dart';
@@ -21,7 +20,7 @@ import 'silent_comment.dart';
 /// This defines or sets a variable.
 ///
 /// {@category AST}
-final class VariableDeclaration implements Statement, SassDeclaration {
+final class VariableDeclaration extends Statement implements SassDeclaration {
   /// The namespace of the variable being set, or `null` if it's defined or set
   /// without a namespace.
   final String? namespace;
@@ -63,13 +62,20 @@ final class VariableDeclaration implements Statement, SassDeclaration {
   FileSpan? get namespaceSpan =>
       namespace == null ? null : span.initialIdentifier();
 
-  VariableDeclaration(this.name, this.expression, this.span,
-      {this.namespace, bool guarded = false, bool global = false, this.comment})
-      : isGuarded = guarded,
+  VariableDeclaration(
+    this.name,
+    this.expression,
+    this.span, {
+    this.namespace,
+    bool guarded = false,
+    bool global = false,
+    this.comment,
+  })  : isGuarded = guarded,
         isGlobal = global {
     if (namespace != null && global) {
       throw ArgumentError(
-          "Other modules' members can't be defined with !global.");
+        "Other modules' members can't be defined with !global.",
+      );
     }
   }
 
@@ -81,9 +87,8 @@ final class VariableDeclaration implements Statement, SassDeclaration {
   ///
   /// @nodoc
   @internal
-  factory VariableDeclaration.parse(String contents,
-          {Object? url, Logger? logger}) =>
-      ScssParser(contents, url: url, logger: logger).parseVariableDeclaration();
+  factory VariableDeclaration.parse(String contents, {Object? url}) =>
+      ScssParser(contents, url: url).parseVariableDeclaration().$1;
 
   T accept<T>(StatementVisitor<T> visitor) =>
       visitor.visitVariableDeclaration(this);

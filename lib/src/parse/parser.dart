@@ -10,7 +10,6 @@ import 'package:string_scanner/string_scanner.dart';
 import '../exception.dart';
 import '../interpolation_map.dart';
 import '../io.dart';
-import '../logger.dart';
 import '../util/character.dart';
 import '../util/lazy_file_span.dart';
 import '../util/map.dart';
@@ -25,10 +24,6 @@ class Parser {
   /// The scanner that scans through the text being parsed.
   final SpanScanner scanner;
 
-  /// The logger to use when emitting warnings.
-  @protected
-  final Logger logger;
-
   /// A map used to map source spans in the text being parsed back to their
   /// original locations in the source file, if this isn't being parsed directly
   /// from source.
@@ -37,13 +32,12 @@ class Parser {
   /// Parses [text] as a CSS identifier and returns the result.
   ///
   /// Throws a [SassFormatException] if parsing fails.
-  static String parseIdentifier(String text, {Logger? logger}) =>
-      Parser(text, logger: logger)._parseIdentifier();
+  static String parseIdentifier(String text) => Parser(text)._parseIdentifier();
 
   /// Returns whether [text] is a valid CSS identifier.
-  static bool isIdentifier(String text, {Logger? logger}) {
+  static bool isIdentifier(String text) {
     try {
-      parseIdentifier(text, logger: logger);
+      parseIdentifier(text);
       return true;
     } on SassFormatException {
       return false;
@@ -53,14 +47,12 @@ class Parser {
   /// Returns whether [text] starts like a variable declaration.
   ///
   /// Ignores everything after the `:`.
-  static bool isVariableDeclarationLike(String text, {Logger? logger}) =>
-      Parser(text, logger: logger)._isVariableDeclarationLike();
+  static bool isVariableDeclarationLike(String text) =>
+      Parser(text)._isVariableDeclarationLike();
 
   @protected
-  Parser(String contents,
-      {Object? url, Logger? logger, InterpolationMap? interpolationMap})
+  Parser(String contents, {Object? url, InterpolationMap? interpolationMap})
       : scanner = SpanScanner(contents, sourceUrl: url),
-        logger = logger ?? const Logger.stderr(),
         _interpolationMap = interpolationMap;
 
   String _parseIdentifier() {
@@ -75,23 +67,31 @@ class Parser {
     if (!scanner.scanChar($dollar)) return false;
     if (!lookingAtIdentifier()) return false;
     identifier();
-    whitespace();
+    whitespace(consumeNewlines: true);
     return scanner.scanChar($colon);
   }
 
   // ## Tokens
 
   /// Consumes whitespace, including any comments.
+  ///
+  /// If [consumeNewlines] is `true`, the indented syntax will consume newlines
+  /// as whitespace. It should only be set to `true` in positions when a
+  /// statement can't end.
   @protected
-  void whitespace() {
+  void whitespace({required bool consumeNewlines}) {
     do {
-      whitespaceWithoutComments();
+      whitespaceWithoutComments(consumeNewlines: consumeNewlines);
     } while (scanComment());
   }
 
   /// Consumes whitespace, but not comments.
+  ///
+  /// If [consumeNewlines] is `true`, the indented syntax will consume newlines
+  /// as whitespace. It should only be set to `true` in positions when a
+  /// statement can't end.
   @protected
-  void whitespaceWithoutComments() {
+  void whitespaceWithoutComments({required bool consumeNewlines}) {
     while (!scanner.isDone && scanner.peekChar().isWhitespace) {
       scanner.readChar();
     }
@@ -114,8 +114,7 @@ class Parser {
 
     switch (scanner.peekChar(1)) {
       case $slash:
-        silentComment();
-        return true;
+        return silentComment();
       case $asterisk:
         loudComment();
         return true;
@@ -125,22 +124,29 @@ class Parser {
   }
 
   /// Like [whitespace], but throws an error if no whitespace is consumed.
+  ///
+  /// If [consumeNewlines] is `true`, the indented syntax will consume newlines
+  /// as whitespace. It should only be set to `true` in positions when a
+  /// statement can't end.
   @protected
-  void expectWhitespace() {
+  void expectWhitespace({bool consumeNewlines = false}) {
     if (scanner.isDone || !(scanner.peekChar().isWhitespace || scanComment())) {
       scanner.error("Expected whitespace.");
     }
-
-    whitespace();
+    whitespace(consumeNewlines: consumeNewlines);
   }
 
-  /// Consumes and ignores a silent (Sass-style) comment.
+  /// Consumes and ignores a single silent (Sass-style) comment, not including
+  /// the trailing newline.
+  ///
+  /// Returns whether the comment was consumed.
   @protected
-  void silentComment() {
+  bool silentComment() {
     scanner.expect("//");
     while (!scanner.isDone && !scanner.peekChar().isNewline) {
       scanner.readChar();
     }
+    return true;
   }
 
   /// Consumes and ignores a loud (CSS-style) comment.
@@ -210,8 +216,11 @@ class Parser {
   }
 
   /// Like [_identifierBody], but parses the body into the [text] buffer.
-  void _identifierBody(StringBuffer text,
-      {bool normalize = false, bool unit = false}) {
+  void _identifierBody(
+    StringBuffer text, {
+    bool normalize = false,
+    bool unit = false,
+  }) {
     loop:
     while (true) {
       switch (scanner.peekChar()) {
@@ -391,7 +400,7 @@ class Parser {
       return null;
     }
 
-    whitespace();
+    whitespace(consumeNewlines: true);
 
     // Match Ruby Sass's behavior: parse a raw URL() if possible, and if not
     // backtrack and re-parse as a function expression.
@@ -412,7 +421,7 @@ class Parser {
               >= 0x0080:
           buffer.writeCharCode(scanner.readChar());
         case int(isWhitespace: true):
-          whitespace();
+          whitespace(consumeNewlines: true);
           if (scanner.peekChar() != $rparen) break loop;
         case $rparen:
           buffer.writeCharCode(scanner.readChar());
@@ -469,8 +478,11 @@ class Parser {
       try {
         return String.fromCharCode(value);
       } on RangeError {
-        scanner.error("Invalid Unicode code point.",
-            position: start, length: scanner.position - start);
+        scanner.error(
+          "Invalid Unicode code point.",
+          position: start,
+          length: scanner.position - start,
+        );
       }
     } else if (value <= 0x1F ||
         value == 0x7F ||
@@ -530,8 +542,10 @@ class Parser {
   void expectIdentChar(int letter, {bool caseSensitive = false}) {
     if (scanIdentChar(letter, caseSensitive: caseSensitive)) return;
 
-    scanner.error('Expected "${String.fromCharCode(letter)}".',
-        position: scanner.position);
+    scanner.error(
+      'Expected "${String.fromCharCode(letter)}".',
+      position: scanner.position,
+    );
   }
 
   // ## Utilities
@@ -548,9 +562,9 @@ class Parser {
         $plus || $minus => switch (scanner.peekChar(1)) {
             int(isDigit: true) => true,
             $dot => scanner.peekChar(2)?.isDigit ?? false,
-            _ => false
+            _ => false,
           },
-        _ => false
+        _ => false,
       };
 
   /// Returns whether the scanner is immediately before a plain CSS identifier.
@@ -570,9 +584,9 @@ class Parser {
       int(isNameStart: true) || $backslash => true,
       $dash => switch (scanner.peekChar(forward + 1)) {
           int(isNameStart: true) || $backslash || $dash => true,
-          _ => false
+          _ => false,
         },
-      _ => false
+      _ => false,
     };
   }
 
@@ -627,8 +641,11 @@ class Parser {
 
   /// Consumes an identifier and asserts that its name exactly matches [text].
   @protected
-  void expectIdentifier(String text,
-      {String? name, bool caseSensitive = false}) {
+  void expectIdentifier(
+    String text, {
+    String? name,
+    bool caseSensitive = false,
+  }) {
     name ??= '"$text"';
 
     var start = scanner.position;
@@ -656,12 +673,8 @@ class Parser {
     var span = scanner.spanFrom(state);
     return _interpolationMap == null
         ? span
-        : LazyFileSpan(() => _interpolationMap!.mapSpan(span));
+        : LazyFileSpan(() => _interpolationMap.mapSpan(span));
   }
-
-  /// Prints a warning to standard error, associated with [span].
-  @protected
-  void warn(String message, FileSpan span) => logger.warn(message, span: span);
 
   /// Throws an error associated with [span].
   ///
@@ -684,9 +697,10 @@ class Parser {
       return callback();
     } on SourceSpanFormatException catch (error, stackTrace) {
       throwWithTrace(
-          SourceSpanFormatException(message, error.span, error.source),
-          error,
-          stackTrace);
+        SourceSpanFormatException(message, error.span, error.source),
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -716,14 +730,6 @@ class Parser {
 
         throwWithTrace(map.mapException(error), error, stackTrace);
       }
-    } on SourceSpanFormatException catch (error, stackTrace) {
-      var span = error.span as FileSpan;
-      if (startsWithIgnoreCase(error.message, "expected")) {
-        span = _adjustExceptionSpan(span);
-      }
-
-      throwWithTrace(
-          SassFormatException(error.message, span), error, stackTrace);
     } on MultiSourceSpanFormatException catch (error, stackTrace) {
       var span = error.span as FileSpan;
       var secondarySpans = error.secondarySpans.cast<FileSpan, String>();
@@ -731,15 +737,31 @@ class Parser {
         span = _adjustExceptionSpan(span);
         secondarySpans = {
           for (var (span, description) in secondarySpans.pairs)
-            _adjustExceptionSpan(span): description
+            _adjustExceptionSpan(span): description,
         };
       }
 
       throwWithTrace(
-          MultiSpanSassFormatException(
-              error.message, span, error.primaryLabel, secondarySpans),
-          error,
-          stackTrace);
+        MultiSpanSassFormatException(
+          error.message,
+          span,
+          error.primaryLabel,
+          secondarySpans,
+        ),
+        error,
+        stackTrace,
+      );
+    } on SourceSpanFormatException catch (error, stackTrace) {
+      var span = error.span as FileSpan;
+      if (startsWithIgnoreCase(error.message, "expected")) {
+        span = _adjustExceptionSpan(span);
+      }
+
+      throwWithTrace(
+        SassFormatException(error.message, span),
+        error,
+        stackTrace,
+      );
     }
   }
 

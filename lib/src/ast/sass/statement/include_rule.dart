@@ -6,7 +6,7 @@ import 'package:source_span/source_span.dart';
 
 import '../../../util/span.dart';
 import '../../../visitor/interface/statement.dart';
-import '../argument_invocation.dart';
+import '../argument_list.dart';
 import '../callable_invocation.dart';
 import '../reference.dart';
 import '../statement.dart';
@@ -15,8 +15,8 @@ import 'content_block.dart';
 /// A mixin invocation.
 ///
 /// {@category AST}
-final class IncludeRule
-    implements Statement, CallableInvocation, SassReference {
+final class IncludeRule extends Statement
+    implements CallableInvocation, SassReference {
   /// The namespace of the mixin being invoked, or `null` if it's invoked
   /// without a namespace.
   final String? namespace;
@@ -25,8 +25,12 @@ final class IncludeRule
   /// hyphens.
   final String name;
 
+  /// The original name of the mixin being invoked, without underscores
+  /// converted to hyphens.
+  final String originalName;
+
   /// The arguments to pass to the mixin.
-  final ArgumentInvocation arguments;
+  final ArgumentList arguments;
 
   /// The block that will be invoked for [ContentRule]s in the mixin being
   /// invoked, or `null` if this doesn't pass a content block.
@@ -55,8 +59,13 @@ final class IncludeRule
     return startSpan.initialIdentifier();
   }
 
-  IncludeRule(this.name, this.arguments, this.span,
-      {this.namespace, this.content});
+  IncludeRule(
+    this.originalName,
+    this.arguments,
+    this.span, {
+    this.namespace,
+    this.content,
+  }) : name = originalName.replaceAll('_', '-');
 
   T accept<T>(StatementVisitor<T> visitor) => visitor.visitIncludeRule(this);
 

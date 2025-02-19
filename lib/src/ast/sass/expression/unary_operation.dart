@@ -13,7 +13,7 @@ import 'list.dart';
 /// A unary operator, as in `+$var` or `not fn()`.
 ///
 /// {@category AST}
-final class UnaryOperationExpression implements Expression {
+final class UnaryOperationExpression extends Expression {
   /// The operator being invoked.
   final UnaryOperator operator;
 
@@ -36,7 +36,7 @@ final class UnaryOperationExpression implements Expression {
       UnaryOperationExpression() ||
       ListExpression(hasBrackets: false, contents: [_, _, ...]) =>
         true,
-      _ => false
+      _ => false,
     };
     if (needsParens) buffer.write($lparen);
     buffer.write(operand);
@@ -63,10 +63,10 @@ enum UnaryOperator {
   /// The boolean negation operator, `not`.
   not('not', 'not');
 
-  /// The English name of [this].
+  /// The English name of `this`.
   final String name;
 
-  /// The Sass syntax for [this].
+  /// The Sass syntax for `this`.
   final String operator;
 
   const UnaryOperator(this.name, this.operator);

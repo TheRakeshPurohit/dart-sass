@@ -20,7 +20,7 @@ final _selectorPseudoClasses = {
   "any",
   "has",
   "host",
-  "host-context"
+  "host-context",
 };
 
 /// Pseudo-element selectors that take unadorned selectors as arguments.
@@ -31,17 +31,24 @@ class SelectorParser extends Parser {
   /// Whether this parser allows the parent selector `&`.
   final bool _allowParent;
 
-  /// Whether this parser allows placeholder selectors beginning with `%`.
-  final bool _allowPlaceholder;
+  /// Whether to parse the selector as plain CSS.
+  final bool _plainCss;
 
-  SelectorParser(super.contents,
-      {super.url,
-      super.logger,
-      super.interpolationMap,
-      bool allowParent = true,
-      bool allowPlaceholder = true})
-      : _allowParent = allowParent,
-        _allowPlaceholder = allowPlaceholder;
+  /// Creates a parser that parses CSS selectors.
+  ///
+  /// If [allowParent] is `false`, this will throw a [SassFormatException] if
+  /// the selector includes the parent selector `&`.
+  ///
+  /// If [plainCss] is `true`, this will parse the selector as a plain CSS
+  /// selector rather than a Sass selector.
+  SelectorParser(
+    super.contents, {
+    super.url,
+    super.interpolationMap,
+    bool allowParent = true,
+    bool plainCss = false,
+  })  : _allowParent = allowParent,
+        _plainCss = plainCss;
 
   SelectorList parse() {
     return wrapSpanFormatException(() {
@@ -81,9 +88,9 @@ class SelectorParser extends Parser {
     var previousLine = scanner.line;
     var components = <ComplexSelector>[_complexSelector()];
 
-    whitespace();
+    _whitespace();
     while (scanner.scanChar($comma)) {
-      whitespace();
+      _whitespace();
       if (scanner.peekChar() == $comma) continue;
       if (scanner.isDone) break;
 
@@ -111,26 +118,29 @@ class SelectorParser extends Parser {
 
     loop:
     while (true) {
-      whitespace();
+      _whitespace();
 
       switch (scanner.peekChar()) {
         case $plus:
           var combinatorStart = scanner.state;
           scanner.readChar();
-          combinators
-              .add(CssValue(Combinator.nextSibling, spanFrom(combinatorStart)));
+          combinators.add(
+            CssValue(Combinator.nextSibling, spanFrom(combinatorStart)),
+          );
 
         case $gt:
           var combinatorStart = scanner.state;
           scanner.readChar();
-          combinators
-              .add(CssValue(Combinator.child, spanFrom(combinatorStart)));
+          combinators.add(
+            CssValue(Combinator.child, spanFrom(combinatorStart)),
+          );
 
         case $tilde:
           var combinatorStart = scanner.state;
           scanner.readChar();
           combinators.add(
-              CssValue(Combinator.followingSibling, spanFrom(combinatorStart)));
+            CssValue(Combinator.followingSibling, spanFrom(combinatorStart)),
+          );
 
         case null:
           break loop;
@@ -145,8 +155,13 @@ class SelectorParser extends Parser {
               $pipe:
         case _ when lookingAtIdentifier():
           if (lastCompound != null) {
-            components.add(ComplexSelectorComponent(
-                lastCompound, combinators, spanFrom(componentStart)));
+            components.add(
+              ComplexSelectorComponent(
+                lastCompound,
+                combinators,
+                spanFrom(componentStart),
+              ),
+            );
           } else if (combinators.isNotEmpty) {
             assert(initialCombinators == null);
             initialCombinators = combinators;
@@ -157,7 +172,8 @@ class SelectorParser extends Parser {
           combinators = [];
           if (scanner.peekChar() == $ampersand) {
             scanner.error(
-                '"&" may only used at the beginning of a compound selector.');
+              '"&" may only used at the beginning of a compound selector.',
+            );
           }
 
         case _:
@@ -165,9 +181,16 @@ class SelectorParser extends Parser {
       }
     }
 
-    if (lastCompound != null) {
-      components.add(ComplexSelectorComponent(
-          lastCompound, combinators, spanFrom(componentStart)));
+    if (combinators.isNotEmpty && _plainCss) {
+      scanner.error("expected selector.");
+    } else if (lastCompound != null) {
+      components.add(
+        ComplexSelectorComponent(
+          lastCompound,
+          combinators,
+          spanFrom(componentStart),
+        ),
+      );
     } else if (combinators.isNotEmpty) {
       initialCombinators = combinators;
     } else {
@@ -175,8 +198,11 @@ class SelectorParser extends Parser {
     }
 
     return ComplexSelector(
-        initialCombinators ?? const [], components, spanFrom(start),
-        lineBreak: lineBreak);
+      initialCombinators ?? const [],
+      components,
+      spanFrom(start),
+      lineBreak: lineBreak,
+    );
   }
 
   /// Consumes a compound selector.
@@ -184,8 +210,8 @@ class SelectorParser extends Parser {
     var start = scanner.state;
     var components = <SimpleSelector>[_simpleSelector()];
 
-    while (isSimpleSelectorStart(scanner.peekChar())) {
-      components.add(_simpleSelector(allowParent: false));
+    while (_isSimpleSelectorStart(scanner.peekChar())) {
+      components.add(_simpleSelector(allowParent: _plainCss));
     }
 
     return CompoundSelector(components, spanFrom(start));
@@ -207,9 +233,11 @@ class SelectorParser extends Parser {
         return _idSelector();
       case $percent:
         var selector = _placeholderSelector();
-        if (!_allowPlaceholder) {
-          error("Placeholder selectors aren't allowed here.",
-              scanner.spanFrom(start));
+        if (_plainCss) {
+          error(
+            "Placeholder selectors aren't allowed in plain CSS.",
+            scanner.spanFrom(start),
+          );
         }
         return selector;
       case $colon:
@@ -218,7 +246,9 @@ class SelectorParser extends Parser {
         var selector = _parentSelector();
         if (!allowParent) {
           error(
-              "Parent selectors aren't allowed here.", scanner.spanFrom(start));
+            "Parent selectors aren't allowed here.",
+            scanner.spanFrom(start),
+          );
         }
         return selector;
 
@@ -231,22 +261,23 @@ class SelectorParser extends Parser {
   AttributeSelector _attributeSelector() {
     var start = scanner.state;
     scanner.expectChar($lbracket);
-    whitespace();
+    _whitespace();
 
     var name = _attributeName();
-    whitespace();
+
+    _whitespace();
     if (scanner.scanChar($rbracket)) {
       return AttributeSelector(name, spanFrom(start));
     }
 
     var operator = _attributeOperator();
-    whitespace();
+    _whitespace();
 
     var next = scanner.peekChar();
     var value = next == $single_quote || next == $double_quote
         ? string()
         : identifier();
-    whitespace();
+    _whitespace();
 
     next = scanner.peekChar();
     var modifier = next != null && next.isAlphabetic
@@ -255,8 +286,12 @@ class SelectorParser extends Parser {
 
     scanner.expectChar($rbracket);
     return AttributeSelector.withOperator(
-        name, operator, value, spanFrom(start),
-        modifier: modifier);
+      name,
+      operator,
+      value,
+      spanFrom(start),
+      modifier: modifier,
+    );
   }
 
   /// Consumes a qualified name as part of an attribute selector.
@@ -340,6 +375,14 @@ class SelectorParser extends Parser {
     var start = scanner.state;
     scanner.expectChar($ampersand);
     var suffix = lookingAtIdentifierBody() ? identifierBody() : null;
+    if (_plainCss && suffix != null) {
+      scanner.error(
+        "Parent selectors can't have suffixes in plain CSS.",
+        position: start.position,
+        length: scanner.position - start.position,
+      );
+    }
+
     return ParentSelector(spanFrom(start), suffix: suffix);
   }
 
@@ -353,7 +396,7 @@ class SelectorParser extends Parser {
     if (!scanner.scanChar($lparen)) {
       return PseudoSelector(name, spanFrom(start), element: element);
     }
-    whitespace();
+    _whitespace();
 
     var unvendored = unvendor(name);
     String? argument;
@@ -368,11 +411,11 @@ class SelectorParser extends Parser {
       selector = _selectorList();
     } else if (unvendored == "nth-child" || unvendored == "nth-last-child") {
       argument = _aNPlusB();
-      whitespace();
+      _whitespace();
       if (scanner.peekChar(-1).isWhitespace && scanner.peekChar() != $rparen) {
         expectIdentifier("of");
         argument += " of";
-        whitespace();
+        _whitespace();
 
         selector = _selectorList();
       }
@@ -381,8 +424,13 @@ class SelectorParser extends Parser {
     }
     scanner.expectChar($rparen);
 
-    return PseudoSelector(name, spanFrom(start),
-        element: element, argument: argument, selector: selector);
+    return PseudoSelector(
+      name,
+      spanFrom(start),
+      element: element,
+      argument: argument,
+      selector: selector,
+    );
   }
 
   /// Consumes an [`An+B` production][An+B] and returns its text.
@@ -408,18 +456,18 @@ class SelectorParser extends Parser {
       do {
         buffer.writeCharCode(scanner.readChar());
       } while (scanner.peekChar().isDigit);
-      whitespace();
+      _whitespace();
       if (!scanIdentChar($n)) return buffer.toString();
     } else {
       expectIdentChar($n);
     }
     buffer.writeCharCode($n);
-    whitespace();
+    _whitespace();
 
     var next = scanner.peekChar();
     if (next != $plus && next != $minus) return buffer.toString();
     buffer.writeCharCode(scanner.readChar());
-    whitespace();
+    _whitespace();
 
     if (!scanner.peekChar().isDigit) scanner.error("Expected a number.");
     do {
@@ -438,12 +486,16 @@ class SelectorParser extends Parser {
       return scanner.scanChar($asterisk)
           ? UniversalSelector(spanFrom(start), namespace: "*")
           : TypeSelector(
-              QualifiedName(identifier(), namespace: "*"), spanFrom(start));
+              QualifiedName(identifier(), namespace: "*"),
+              spanFrom(start),
+            );
     } else if (scanner.scanChar($pipe)) {
       return scanner.scanChar($asterisk)
           ? UniversalSelector(spanFrom(start), namespace: "")
           : TypeSelector(
-              QualifiedName(identifier(), namespace: ""), spanFrom(start));
+              QualifiedName(identifier(), namespace: ""),
+              spanFrom(start),
+            );
     }
 
     var nameOrNamespace = identifier();
@@ -453,8 +505,22 @@ class SelectorParser extends Parser {
       return UniversalSelector(spanFrom(start), namespace: nameOrNamespace);
     } else {
       return TypeSelector(
-          QualifiedName(identifier(), namespace: nameOrNamespace),
-          spanFrom(start));
+        QualifiedName(identifier(), namespace: nameOrNamespace),
+        spanFrom(start),
+      );
     }
+  }
+
+  // Returns whether [character] can start a simple selector in the middle of a
+  // compound selector.
+  bool _isSimpleSelectorStart(int? character) => switch (character) {
+        $asterisk || $lbracket || $dot || $hash || $percent || $colon => true,
+        $ampersand => _plainCss,
+        _ => false,
+      };
+
+  /// The value of `consumeNewlines` is not relevant for this class.
+  void _whitespace() {
+    whitespace(consumeNewlines: true);
   }
 }

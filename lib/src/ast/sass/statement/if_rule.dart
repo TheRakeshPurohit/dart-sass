@@ -20,7 +20,7 @@ import 'variable_declaration.dart';
 /// This conditionally executes a block of code.
 ///
 /// {@category AST}
-final class IfRule implements Statement {
+final class IfRule extends Statement {
   /// The `@if` and `@else if` clauses.
   ///
   /// The first clause whose expression evaluates to `true` will have its
@@ -42,9 +42,11 @@ final class IfRule implements Statement {
 
   String toString() {
     var result = clauses
-        .mapIndexed((index, clause) =>
-            "@${index == 0 ? 'if' : 'else if'} ${clause.expression} "
-            "{${clause.children.join(' ')}}")
+        .mapIndexed(
+          (index, clause) =>
+              "@${index == 0 ? 'if' : 'else if'} ${clause.expression} "
+              "{${clause.children.join(' ')}}",
+        )
         .join(' ');
 
     var lastClause = this.lastClause;
@@ -70,12 +72,15 @@ sealed class IfRuleClause {
       : this._(List.unmodifiable(children));
 
   IfRuleClause._(this.children)
-      : hasDeclarations = children.any((child) => switch (child) {
-              VariableDeclaration() || FunctionRule() || MixinRule() => true,
-              ImportRule(:var imports) =>
-                imports.any((import) => import is DynamicImport),
-              _ => false
-            });
+      : hasDeclarations = children.any(
+          (child) => switch (child) {
+            VariableDeclaration() || FunctionRule() || MixinRule() => true,
+            ImportRule(:var imports) => imports.any(
+                (import) => import is DynamicImport,
+              ),
+            _ => false,
+          },
+        );
 }
 
 /// An `@if` or `@else if` clause in an `@if` rule.

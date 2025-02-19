@@ -2,12 +2,8 @@
 // MIT-style license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-/// We strongly recommend importing this library with the prefix `sass`.
-library sass;
-
 // ignore_for_file: implementation_imports
 
-import 'package:sass/sass.dart';
 import 'package:sass/src/parse/parser.dart';
 
 export 'package:sass/sass.dart';
@@ -17,6 +13,7 @@ export 'package:sass/src/ast/selector.dart';
 export 'package:sass/src/async_import_cache.dart';
 export 'package:sass/src/exception.dart' show SassFormatException;
 export 'package:sass/src/import_cache.dart';
+export 'package:sass/src/importer/node_package.dart';
 export 'package:sass/src/interpolation_map.dart';
 export 'package:sass/src/value.dart' hide ColorFormat, SpanColorFormat;
 export 'package:sass/src/visitor/find_dependencies.dart';
@@ -36,11 +33,9 @@ export 'package:sass/src/visitor/statement_search.dart';
 /// Throws a [SassFormatException] if parsing fails.
 ///
 /// {@category Parsing}
-String parseIdentifier(String text) =>
-    Parser.parseIdentifier(text, logger: Logger.quiet);
+String parseIdentifier(String text) => Parser.parseIdentifier(text);
 
 /// Returns whether [text] is a valid CSS identifier.
 ///
 /// {@category Parsing}
-bool isIdentifier(String text) =>
-    Parser.isIdentifier(text, logger: Logger.quiet);
+bool isIdentifier(String text) => Parser.isIdentifier(text);

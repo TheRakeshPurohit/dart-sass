@@ -27,12 +27,14 @@ final class TypeSelector extends SimpleSelector {
   /// @nodoc
   @internal
   TypeSelector addSuffix(String suffix) => TypeSelector(
-      QualifiedName(name.name + suffix, namespace: name.namespace), span);
+        QualifiedName(name.name + suffix, namespace: name.namespace),
+        span,
+      );
 
   /// @nodoc
   @internal
   List<SimpleSelector>? unify(List<SimpleSelector> compound) {
-    if (compound.first case UniversalSelector() || TypeSelector()) {
+    if (compound.firstOrNull case UniversalSelector() || TypeSelector()) {
       var unified = unifyUniversalAndElement(this, compound.first);
       if (unified == null) return null;
       return [unified, ...compound.skip(1)];

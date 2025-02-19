@@ -14,7 +14,7 @@ import 'list.dart';
 /// A binary operator, as in `1 + 2` or `$this and $other`.
 ///
 /// {@category AST}
-final class BinaryOperationExpression implements Expression {
+final class BinaryOperationExpression extends Expression {
   /// The operator being invoked.
   final BinaryOperator operator;
 
@@ -81,7 +81,7 @@ final class BinaryOperationExpression implements Expression {
       BinaryOperationExpression(operator: BinaryOperator(:var precedence)) =>
         precedence < operator.precedence,
       ListExpression(hasBrackets: false, contents: [_, _, ...]) => true,
-      _ => false
+      _ => false,
     };
     if (leftNeedsParens) buffer.writeCharCode($lparen);
     buffer.write(left);
@@ -97,7 +97,7 @@ final class BinaryOperationExpression implements Expression {
         operator.precedence <= this.operator.precedence &&
             !(operator == this.operator && operator.isAssociative),
       ListExpression(hasBrackets: false, contents: [_, _, ...]) => true,
-      _ => false
+      _ => false,
     };
     if (rightNeedsParens) buffer.writeCharCode($lparen);
     buffer.write(right);
@@ -111,6 +111,9 @@ final class BinaryOperationExpression implements Expression {
 ///
 /// {@category AST}
 enum BinaryOperator {
+  // Note: When updating these operators, also update
+  // pkg/sass-parser/lib/src/expression/binary-operation.ts.
+
   /// The Microsoft equals operator, `=`.
   singleEquals('single equals', '=', 0),
 
@@ -153,13 +156,13 @@ enum BinaryOperator {
   /// The modulo operator, `%`.
   modulo('modulo', '%', 6);
 
-  /// The English name of [this].
+  /// The English name of `this`.
   final String name;
 
-  /// The Sass syntax for [this].
+  /// The Sass syntax for `this`.
   final String operator;
 
-  /// The precedence of [this].
+  /// The precedence of `this`.
   ///
   /// An operator with higher precedence binds tighter.
   final int precedence;
@@ -169,9 +172,12 @@ enum BinaryOperator {
   /// [associative property]: https://en.wikipedia.org/wiki/Associative_property
   final bool isAssociative;
 
-  const BinaryOperator(this.name, this.operator, this.precedence,
-      {bool associative = false})
-      : isAssociative = associative;
+  const BinaryOperator(
+    this.name,
+    this.operator,
+    this.precedence, {
+    bool associative = false,
+  }) : isAssociative = associative;
 
   String toString() => name;
 }

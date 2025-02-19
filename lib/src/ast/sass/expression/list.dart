@@ -13,7 +13,7 @@ import 'unary_operation.dart';
 /// A list literal.
 ///
 /// {@category AST}
-final class ListExpression implements Expression {
+final class ListExpression extends Expression {
   /// The elements of this list.
   final List<Expression> contents;
 
@@ -25,9 +25,12 @@ final class ListExpression implements Expression {
 
   final FileSpan span;
 
-  ListExpression(Iterable<Expression> contents, this.separator, this.span,
-      {bool brackets = false})
-      : contents = List.unmodifiable(contents),
+  ListExpression(
+    Iterable<Expression> contents,
+    this.separator,
+    this.span, {
+    bool brackets = false,
+  })  : contents = List.unmodifiable(contents),
         hasBrackets = brackets;
 
   T accept<T>(ExpressionVisitor<T> visitor) =>
@@ -42,10 +45,15 @@ final class ListExpression implements Expression {
       buffer.writeCharCode($lparen);
     }
 
-    buffer.write(contents
-        .map((element) =>
-            _elementNeedsParens(element) ? "($element)" : element.toString())
-        .join(separator == ListSeparator.comma ? ", " : " "));
+    buffer.write(
+      contents
+          .map(
+            (element) => _elementNeedsParens(element)
+                ? "($element)"
+                : element.toString(),
+          )
+          .join(separator == ListSeparator.comma ? ", " : " "),
+    );
 
     if (hasBrackets) {
       buffer.writeCharCode($rbracket);
@@ -58,21 +66,21 @@ final class ListExpression implements Expression {
     return buffer.toString();
   }
 
-  /// Returns whether [expression], contained in [this], needs parentheses when
+  /// Returns whether [expression], contained in `this`, needs parentheses when
   /// printed as Sass source.
   bool _elementNeedsParens(Expression expression) => switch (expression) {
         ListExpression(
           contents: [_, _, ...],
           hasBrackets: false,
-          separator: var childSeparator
+          separator: var childSeparator,
         ) =>
           separator == ListSeparator.comma
               ? childSeparator == ListSeparator.comma
               : childSeparator != ListSeparator.undecided,
         UnaryOperationExpression(
-          operator: UnaryOperator.plus || UnaryOperator.minus
+          operator: UnaryOperator.plus || UnaryOperator.minus,
         ) =>
           separator == ListSeparator.space,
-        _ => false
+        _ => false,
       };
 }

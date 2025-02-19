@@ -2,14 +2,19 @@
 // MIT-style license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import 'package:js/js_util.dart';
+
 import 'js/exception.dart';
+import 'js/deprecations.dart';
 import 'js/exports.dart';
+import 'js/importer/canonicalize_context.dart';
 import 'js/compile.dart';
 import 'js/compiler.dart';
 import 'js/legacy.dart';
 import 'js/legacy/types.dart';
 import 'js/legacy/value.dart';
 import 'js/logger.dart';
+import 'js/parser.dart';
 import 'js/source_span.dart';
 import 'js/utils.dart';
 import 'js/value.dart';
@@ -20,14 +25,20 @@ import 'value.dart';
 /// This sets up exports that can be called from JS.
 void main() {
   exports.compile = allowInteropNamed('sass.compile', compile);
-  exports.compileString =
-      allowInteropNamed('sass.compileString', compileString);
+  exports.compileString = allowInteropNamed(
+    'sass.compileString',
+    compileString,
+  );
   exports.compileAsync = allowInteropNamed('sass.compileAsync', compileAsync);
-  exports.compileStringAsync =
-      allowInteropNamed('sass.compileStringAsync', compileStringAsync);
+  exports.compileStringAsync = allowInteropNamed(
+    'sass.compileStringAsync',
+    compileStringAsync,
+  );
   exports.initCompiler = allowInteropNamed('sass.initCompiler', initCompiler);
-  exports.initAsyncCompiler =
-      allowInteropNamed('sass.initAsyncCompiler', initAsyncCompiler);
+  exports.initAsyncCompiler = allowInteropNamed(
+    'sass.initAsyncCompiler',
+    initAsyncCompiler,
+  );
   exports.Compiler = compilerClass;
   exports.AsyncCompiler = asyncCompilerClass;
   exports.Value = valueClass;
@@ -48,9 +59,15 @@ void main() {
   exports.sassFalse = sassFalse;
   exports.Exception = exceptionClass;
   exports.Logger = LoggerNamespace(
-      silent: JSLogger(
-          warn: allowInteropNamed('sass.Logger.silent.warn', (_, __) {}),
-          debug: allowInteropNamed('sass.Logger.silent.debug', (_, __) {})));
+    silent: JSLogger(
+      warn: allowInteropNamed('sass.Logger.silent.warn', (_, __) {}),
+      debug: allowInteropNamed('sass.Logger.silent.debug', (_, __) {}),
+    ),
+  );
+  exports.NodePackageImporter = nodePackageImporterClass;
+  exports.deprecations = jsify(deprecations);
+  exports.Version = versionClass;
+  exports.loadParserExports_ = allowInterop(loadParserExports);
 
   exports.info =
       "dart-sass\t${const String.fromEnvironment('version')}\t(Sass Compiler)\t"
@@ -58,6 +75,7 @@ void main() {
       "dart2js\t${const String.fromEnvironment('dart-version')}\t"
       "(Dart Compiler)\t[Dart]";
 
+  updateCanonicalizeContextPrototype();
   updateSourceSpanPrototype();
 
   // Legacy API
@@ -65,14 +83,15 @@ void main() {
   exports.renderSync = allowInteropNamed('sass.renderSync', renderSync);
 
   exports.types = Types(
-      Boolean: legacyBooleanClass,
-      Color: legacyColorClass,
-      List: legacyListClass,
-      Map: legacyMapClass,
-      Null: legacyNullClass,
-      Number: legacyNumberClass,
-      String: legacyStringClass,
-      Error: jsErrorClass);
+    Boolean: legacyBooleanClass,
+    Color: legacyColorClass,
+    List: legacyListClass,
+    Map: legacyMapClass,
+    Null: legacyNullClass,
+    Number: legacyNumberClass,
+    String: legacyStringClass,
+    Error: jsErrorClass,
+  );
   exports.NULL = sassNull;
   exports.TRUE = sassTrue;
   exports.FALSE = sassFalse;

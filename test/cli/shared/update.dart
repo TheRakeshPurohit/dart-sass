@@ -2,6 +2,7 @@
 // MIT-style license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:test_descriptor/test_descriptor.dart' as d;
 import 'package:test_process/test_process.dart';
@@ -42,7 +43,7 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
 
     test("whose source was transitively modified", () async {
       await d.file("other.scss", "a {b: c}").create();
-      await d.file("test.scss", "@import 'other'").create();
+      await d.file("test.scss", "@use 'other'").create();
 
       var sass = await update(["test.scss:out.css"]);
       expect(sass.stdout, emits(endsWith('Compiled test.scss to out.css.')));
@@ -67,11 +68,12 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
 
       var sass = await update(["test1.scss:out1.css", "test2.scss:out2.css"]);
       expect(
-          sass.stdout,
-          emitsInAnyOrder([
-            endsWith('Compiled test1.scss to out1.css.'),
-            endsWith('Compiled test2.scss to out2.css.')
-          ]));
+        sass.stdout,
+        emitsInAnyOrder([
+          endsWith('Compiled test1.scss to out1.css.'),
+          endsWith('Compiled test2.scss to out2.css.'),
+        ]),
+      );
       await sass.shouldExit(0);
 
       await d
@@ -86,11 +88,12 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
 
       sass = await update(["test1.scss:out1.css", "test2.scss:out2.css"]);
       expect(
-          sass.stdout,
-          emitsInAnyOrder([
-            endsWith('Compiled test1.scss to out1.css.'),
-            endsWith('Compiled test2.scss to out2.css.')
-          ]));
+        sass.stdout,
+        emitsInAnyOrder([
+          endsWith('Compiled test1.scss to out1.css.'),
+          endsWith('Compiled test2.scss to out2.css.'),
+        ]),
+      );
       await sass.shouldExit(0);
 
       await d
@@ -148,6 +151,18 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
       await d.file("out.css", "x {y: z}").validate();
     });
 
+    // Regression test for #2203
+    test("whose sources weren't modified with an absolute path", () async {
+      await d.file("test.scss", "a {b: c}").create();
+      await d.file("out.css", "x {y: z}").create();
+
+      var sass = await update(["${p.absolute(d.path('test.scss'))}:out.css"]);
+      expect(sass.stdout, emitsDone);
+      await sass.shouldExit(0);
+
+      await d.file("out.css", "x {y: z}").validate();
+    });
+
     test("whose sibling was modified", () async {
       await d.file("test1.scss", "a {b: c}").create();
       await d.file("out1.css", "x {y: z}").create();
@@ -164,26 +179,26 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
     });
 
     test("with a missing import", () async {
-      await d.file("test.scss", "@import 'other'").create();
+      await d.file("test.scss", "@use 'other'").create();
 
       var message = "Error: Can't find stylesheet to import.";
       var sass = await update(["test.scss:out.css"]);
       expect(sass.stderr, emits(message));
-      expect(sass.stderr, emitsThrough(contains("test.scss 1:9")));
+      expect(sass.stderr, emitsThrough(contains("test.scss 1:1")));
       await sass.shouldExit(65);
 
       await d.file("out.css", contains(message)).validate();
     });
 
     test("with a conflicting import", () async {
-      await d.file("test.scss", "@import 'other'").create();
+      await d.file("test.scss", "@use 'other'").create();
       await d.file("other.scss", "a {b: c}").create();
       await d.file("_other.scss", "x {y: z}").create();
 
       var message = "Error: It's not clear which file to import. Found:";
       var sass = await update(["test.scss:out.css"]);
       expect(sass.stderr, emits(message));
-      expect(sass.stderr, emitsThrough(contains("test.scss 1:9")));
+      expect(sass.stderr, emitsThrough(contains("test.scss 1:1")));
       await sass.shouldExit(65);
 
       await d.file("out.css", contains(message)).validate();
@@ -244,7 +259,7 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
     });
 
     test("when an import is removed", () async {
-      await d.file("test.scss", "@import 'other'").create();
+      await d.file("test.scss", "@use 'other'").create();
       await d.file("_other.scss", "a {b: c}").create();
       await (await update(["test.scss:out.css"])).shouldExit(0);
       await d.file("out.css", anything).validate();
@@ -253,27 +268,29 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
       d.file("_other.scss").io.deleteSync();
       var sass = await update(["test.scss:out.css"]);
       expect(sass.stderr, emits(message));
-      expect(sass.stderr, emitsThrough(contains("test.scss 1:9")));
+      expect(sass.stderr, emitsThrough(contains("test.scss 1:1")));
       await sass.shouldExit(65);
 
       await d.file("out.css", contains(message)).validate();
     });
   });
 
-  test("deletes a CSS file when a file has an error with --no-error-css",
-      () async {
-    await d.file("test.scss", "a {b: c}").create();
-    await (await update(["test.scss:out.css"])).shouldExit(0);
-    await d.file("out.css", anything).validate();
+  test(
+    "deletes a CSS file when a file has an error with --no-error-css",
+    () async {
+      await d.file("test.scss", "a {b: c}").create();
+      await (await update(["test.scss:out.css"])).shouldExit(0);
+      await d.file("out.css", anything).validate();
 
-    await d.file("test.scss", "a {b: }").create();
-    var sass = await update(["--no-error-css", "test.scss:out.css"]);
-    expect(sass.stderr, emits("Error: Expected expression."));
-    expect(sass.stderr, emitsThrough(contains("test.scss 1:7")));
-    await sass.shouldExit(65);
+      await d.file("test.scss", "a {b: }").create();
+      var sass = await update(["--no-error-css", "test.scss:out.css"]);
+      expect(sass.stderr, emits("Error: Expected expression."));
+      expect(sass.stderr, emitsThrough(contains("test.scss 1:7")));
+      await sass.shouldExit(65);
 
-    await d.nothing("out.css").validate();
-  });
+      await d.nothing("out.css").validate();
+    },
+  );
 
   group("doesn't allow", () {
     test("--stdin", () async {
@@ -284,8 +301,10 @@ void sharedTests(Future<TestProcess> runSass(Iterable<String> arguments)) {
 
     test("printing to stderr", () async {
       var sass = await update(["test.scss"]);
-      expect(sass.stdout,
-          emits('--update is not allowed when printing to stdout.'));
+      expect(
+        sass.stdout,
+        emits('--update is not allowed when printing to stdout.'),
+      );
       await sass.shouldExit(64);
     });
   });

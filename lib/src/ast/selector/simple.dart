@@ -5,7 +5,6 @@
 import 'package:meta/meta.dart';
 
 import '../../exception.dart';
-import '../../logger.dart';
 import '../../parse/selector.dart';
 import '../selector.dart';
 
@@ -19,7 +18,7 @@ final _subselectorPseudos = {
   'where',
   'any',
   'nth-child',
-  'nth-last-child'
+  'nth-last-child',
 };
 
 /// An abstract superclass for simple selectors.
@@ -34,6 +33,16 @@ abstract base class SimpleSelector extends Selector {
   /// sequence will contain 1000 simple selectors.
   int get specificity => 1000;
 
+  /// Whether this requires complex non-local reasoning to determine whether
+  /// it's a super- or sub-selector.
+  ///
+  /// This includes both pseudo-elements and pseudo-selectors that take
+  /// selectors as arguments.
+  ///
+  /// #nodoc
+  @internal
+  bool get hasComplicatedSuperselectorSemantics => false;
+
   SimpleSelector(super.span);
 
   /// Parses a simple selector from [contents].
@@ -43,13 +52,18 @@ abstract base class SimpleSelector extends Selector {
   /// selector.
   ///
   /// Throws a [SassFormatException] if parsing fails.
-  factory SimpleSelector.parse(String contents,
-          {Object? url, Logger? logger, bool allowParent = true}) =>
-      SelectorParser(contents,
-              url: url, logger: logger, allowParent: allowParent)
-          .parseSimpleSelector();
+  factory SimpleSelector.parse(
+    String contents, {
+    Object? url,
+    bool allowParent = true,
+  }) =>
+      SelectorParser(
+        contents,
+        url: url,
+        allowParent: allowParent,
+      ).parseSimpleSelector();
 
-  /// Returns a new [SimpleSelector] based on [this], as though it had been
+  /// Returns a new [SimpleSelector] based on `this`, as though it had been
   /// written with [suffix] at the end.
   ///
   /// Assumes [suffix] is a valid identifier suffix. If this wouldn't produce a
@@ -58,7 +72,11 @@ abstract base class SimpleSelector extends Selector {
   /// @nodoc
   @internal
   SimpleSelector addSuffix(String suffix) => throw MultiSpanSassException(
-      'Selector "$this" can\'t have a suffix', span, "outer selector", {});
+        'Selector "$this" can\'t have a suffix',
+        span,
+        "outer selector",
+        {},
+      );
 
   /// Returns the components of a [CompoundSelector] that matches only elements
   /// matched by both this and [compound].
@@ -105,10 +123,13 @@ abstract base class SimpleSelector extends Selector {
     if (other is PseudoSelector && other.isClass) {
       var list = other.selector;
       if (list != null && _subselectorPseudos.contains(other.normalizedName)) {
-        return list.components.every((complex) =>
-            complex.components.isNotEmpty &&
-            complex.components.last.selector.components
-                .any((simple) => isSuperselector(simple)));
+        return list.components.every(
+          (complex) =>
+              complex.components.isNotEmpty &&
+              complex.components.last.selector.components.any(
+                (simple) => isSuperselector(simple),
+              ),
+        );
       }
     }
     return false;

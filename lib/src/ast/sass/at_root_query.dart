@@ -7,7 +7,6 @@ import 'package:collection/collection.dart';
 
 import '../../exception.dart';
 import '../../interpolation_map.dart';
-import '../../logger.dart';
 import '../../parse/at_root_query.dart';
 import '../css.dart';
 
@@ -57,11 +56,14 @@ final class AtRootQuery {
   /// original location of the selector in the source file.
   ///
   /// Throws a [SassFormatException] if parsing fails.
-  factory AtRootQuery.parse(String contents,
-          {Object? url, Logger? logger, InterpolationMap? interpolationMap}) =>
-      AtRootQueryParser(contents, url: url, logger: logger).parse();
+  factory AtRootQuery.parse(
+    String contents, {
+    Object? url,
+    InterpolationMap? interpolationMap,
+  }) =>
+      AtRootQueryParser(contents, url: url).parse();
 
-  /// Returns whether [this] excludes [node].
+  /// Returns whether `this` excludes [node].
   ///
   /// @nodoc
   @internal
@@ -72,10 +74,10 @@ final class AtRootQuery {
       CssMediaRule() => excludesName("media"),
       CssSupportsRule() => excludesName("supports"),
       CssAtRule() => excludesName(node.name.value.toLowerCase()),
-      _ => false
+      _ => false,
     };
   }
 
-  /// Returns whether [this] excludes an at-rule with the given [name].
+  /// Returns whether `this` excludes an at-rule with the given [name].
   bool excludesName(String name) => (_all || names.contains(name)) != include;
 }

@@ -7,7 +7,6 @@ import 'package:charcode/charcode.dart';
 import '../ast/sass.dart';
 import '../deprecation.dart';
 import '../interpolation_buffer.dart';
-import '../logger.dart';
 import '../util/character.dart';
 import 'stylesheet.dart';
 
@@ -16,12 +15,12 @@ class ScssParser extends StylesheetParser {
   bool get indented => false;
   int get currentIndentation => 0;
 
-  ScssParser(super.contents, {super.url, super.logger});
+  ScssParser(super.contents, {super.url});
 
   Interpolation styleRuleSelector() => almostAnyValue();
 
   void expectStatementSeparator([String? name]) {
-    whitespaceWithoutComments();
+    _whitespaceWithoutComments();
     if (scanner.isDone) return;
     if (scanner.peekChar() case $semicolon || $rbrace) return;
     scanner.expectChar($semicolon);
@@ -39,18 +38,20 @@ class ScssParser extends StylesheetParser {
 
   bool scanElse(int ifIndentation) {
     var start = scanner.state;
-    whitespace();
+    _whitespace();
     var beforeAt = scanner.state;
     if (scanner.scanChar($at)) {
       if (scanIdentifier('else', caseSensitive: true)) return true;
       if (scanIdentifier('elseif', caseSensitive: true)) {
-        logger.warnForDeprecation(
-            Deprecation.elseif,
-            '@elseif is deprecated and will not be supported in future Sass '
-            'versions.\n'
-            '\n'
-            'Recommendation: @else if',
-            span: scanner.spanFrom(beforeAt));
+        warnings.add((
+          deprecation: Deprecation.elseif,
+          message:
+              '@elseif is deprecated and will not be supported in future Sass '
+              'versions.\n'
+              '\n'
+              'Recommendation: @else if',
+          span: scanner.spanFrom(beforeAt),
+        ));
         scanner.position -= 2;
         return true;
       }
@@ -61,7 +62,7 @@ class ScssParser extends StylesheetParser {
 
   List<Statement> children(Statement child()) {
     scanner.expectChar($lbrace);
-    whitespaceWithoutComments();
+    _whitespaceWithoutComments();
     var children = <Statement>[];
     while (true) {
       switch (scanner.peekChar()) {
@@ -72,17 +73,17 @@ class ScssParser extends StylesheetParser {
           switch (scanner.peekChar(1)) {
             case $slash:
               children.add(_silentComment());
-              whitespaceWithoutComments();
+              _whitespaceWithoutComments();
             case $asterisk:
               children.add(_loudComment());
-              whitespaceWithoutComments();
+              _whitespaceWithoutComments();
             default:
               children.add(child());
           }
 
         case $semicolon:
           scanner.readChar();
-          whitespaceWithoutComments();
+          _whitespaceWithoutComments();
 
         case $rbrace:
           scanner.expectChar($rbrace);
@@ -96,7 +97,7 @@ class ScssParser extends StylesheetParser {
 
   List<Statement> statements(Statement? statement()) {
     var statements = <Statement>[];
-    whitespaceWithoutComments();
+    _whitespaceWithoutComments();
     while (!scanner.isDone) {
       switch (scanner.peekChar()) {
         case $dollar:
@@ -106,17 +107,17 @@ class ScssParser extends StylesheetParser {
           switch (scanner.peekChar(1)) {
             case $slash:
               statements.add(_silentComment());
-              whitespaceWithoutComments();
+              _whitespaceWithoutComments();
             case $asterisk:
               statements.add(_loudComment());
-              whitespaceWithoutComments();
+              _whitespaceWithoutComments();
             default:
               if (statement() case var child?) statements.add(child);
           }
 
         case $semicolon:
           scanner.readChar();
-          whitespaceWithoutComments();
+          _whitespaceWithoutComments();
 
         default:
           if (statement() case var child?) statements.add(child);
@@ -137,12 +138,16 @@ class ScssParser extends StylesheetParser {
     } while (scanner.scan("//"));
 
     if (plainCss) {
-      error("Silent comments aren't allowed in plain CSS.",
-          scanner.spanFrom(start));
+      error(
+        "Silent comments aren't allowed in plain CSS.",
+        scanner.spanFrom(start),
+      );
     }
 
     return lastSilentComment = SilentComment(
-        scanner.substring(start.position), scanner.spanFrom(start));
+      scanner.substring(start.position),
+      scanner.spanFrom(start),
+    );
   }
 
   /// Consumes a statement-level loud comment block.
@@ -155,7 +160,8 @@ class ScssParser extends StylesheetParser {
       switch (scanner.peekChar()) {
         case $hash:
           if (scanner.peekChar(1) == $lbrace) {
-            buffer.add(singleInterpolation());
+            var (expression, span) = singleInterpolation();
+            buffer.add(expression, span);
           } else {
             buffer.writeCharCode(scanner.readChar());
           }
@@ -180,5 +186,15 @@ class ScssParser extends StylesheetParser {
           buffer.writeCharCode(scanner.readChar());
       }
     }
+  }
+
+  /// The value of `consumeNewlines` is not relevant for this class.
+  void _whitespace() {
+    whitespace(consumeNewlines: true);
+  }
+
+  /// The value of `consumeNewlines` is not relevant for this class.
+  void _whitespaceWithoutComments() {
+    whitespaceWithoutComments(consumeNewlines: true);
   }
 }

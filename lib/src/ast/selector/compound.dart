@@ -5,7 +5,6 @@
 import 'package:meta/meta.dart';
 
 import '../../extend/functions.dart';
-import '../../logger.dart';
 import '../../parse/selector.dart';
 import '../../utils.dart';
 import '../../visitor/interface/selector.dart';
@@ -29,8 +28,10 @@ final class CompoundSelector extends Selector {
   /// Specificity is represented in base 1000. The spec says this should be
   /// "sufficiently high"; it's extremely unlikely that any single selector
   /// sequence will contain 1000 simple selectors.
-  late final int specificity =
-      components.fold(0, (sum, component) => sum + component.specificity);
+  late final int specificity = components.fold(
+    0,
+    (sum, component) => sum + component.specificity,
+  );
 
   /// If this compound selector is composed of a single simple selector, returns
   /// it.
@@ -41,6 +42,19 @@ final class CompoundSelector extends Selector {
   @internal
   SimpleSelector? get singleSimple =>
       components.length == 1 ? components.first : null;
+
+  /// Whether any simple selector in this contains a selector that requires
+  /// complex non-local reasoning to determine whether it's a super- or
+  /// sub-selector.
+  ///
+  /// This includes both pseudo-elements and pseudo-selectors that take
+  /// selectors as arguments.
+  ///
+  /// #nodoc
+  @internal
+  late final bool hasComplicatedSuperselectorSemantics = components.any(
+    (component) => component.hasComplicatedSuperselectorSemantics,
+  );
 
   CompoundSelector(Iterable<SimpleSelector> components, super.span)
       : components = List.unmodifiable(components) {
@@ -56,11 +70,16 @@ final class CompoundSelector extends Selector {
   /// selector.
   ///
   /// Throws a [SassFormatException] if parsing fails.
-  factory CompoundSelector.parse(String contents,
-          {Object? url, Logger? logger, bool allowParent = true}) =>
-      SelectorParser(contents,
-              url: url, logger: logger, allowParent: allowParent)
-          .parseCompoundSelector();
+  factory CompoundSelector.parse(
+    String contents, {
+    Object? url,
+    bool allowParent = true,
+  }) =>
+      SelectorParser(
+        contents,
+        url: url,
+        allowParent: allowParent,
+      ).parseCompoundSelector();
 
   T accept<T>(SelectorVisitor<T> visitor) =>
       visitor.visitCompoundSelector(this);

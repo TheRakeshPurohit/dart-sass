@@ -14,13 +14,14 @@ import '../../../visitor/interface/expression.dart';
 /// evaluated.
 ///
 /// {@category AST}
-final class IfExpression implements Expression, CallableInvocation {
+final class IfExpression extends Expression implements CallableInvocation {
   /// The declaration of `if()`, as though it were a normal function.
-  static final declaration = ArgumentDeclaration.parse(
-      r"@function if($condition, $if-true, $if-false) {");
+  static final declaration = ParameterList.parse(
+    r"@function if($condition, $if-true, $if-false) {",
+  );
 
   /// The arguments passed to `if()`.
-  final ArgumentInvocation arguments;
+  final ArgumentList arguments;
 
   final FileSpan span;
 

@@ -4,6 +4,7 @@
 
 import 'package:js/js.dart';
 
+import '../../importer/node_package.dart';
 import '../logger.dart';
 import 'fiber.dart';
 
@@ -13,6 +14,7 @@ class RenderOptions {
   external String? get file;
   external String? get data;
   external Object? get importer;
+  external NodePackageImporter? get pkgImporter;
   external Object? get functions;
   external List<Object /* String */ >? get includePaths;
   external bool? get indentedSyntax;
@@ -28,30 +30,38 @@ class RenderOptions {
   external bool? get sourceMapEmbed;
   external String? get sourceMapRoot;
   external bool? get quietDeps;
+  external List<Object /*Deprecation|String|Version*/ >? get fatalDeprecations;
+  external List<Object /*Deprecation|String*/ >? get futureDeprecations;
+  external List<Object /*Deprecation|String*/ >? get silenceDeprecations;
   external bool? get verbose;
   external bool? get charset;
   external JSLogger? get logger;
 
-  external factory RenderOptions(
-      {String? file,
-      String? data,
-      Object? importer,
-      Object? functions,
-      List<String>? includePaths,
-      bool? indentedSyntax,
-      bool? omitSourceMapUrl,
-      String? outFile,
-      String? outputStyle,
-      String? indentType,
-      Object? indentWidth,
-      String? linefeed,
-      FiberClass? fiber,
-      Object? sourceMap,
-      bool? sourceMapContents,
-      bool? sourceMapEmbed,
-      String? sourceMapRoot,
-      bool? quietDeps,
-      bool? verbose,
-      bool? charset,
-      JSLogger? logger});
+  external factory RenderOptions({
+    String? file,
+    String? data,
+    Object? importer,
+    NodePackageImporter? pkgImporter,
+    Object? functions,
+    List<String>? includePaths,
+    bool? indentedSyntax,
+    bool? omitSourceMapUrl,
+    String? outFile,
+    String? outputStyle,
+    String? indentType,
+    Object? indentWidth,
+    String? linefeed,
+    FiberClass? fiber,
+    Object? sourceMap,
+    bool? sourceMapContents,
+    bool? sourceMapEmbed,
+    String? sourceMapRoot,
+    bool? quietDeps,
+    List<Object>? fatalDeprecations,
+    List<Object>? futureDeprecations,
+    List<Object>? silenceDeprecations,
+    bool? verbose,
+    bool? charset,
+    JSLogger? logger,
+  });
 }

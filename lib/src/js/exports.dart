@@ -26,6 +26,9 @@ class Exports {
   external set info(String info);
   external set Exception(JSClass function);
   external set Logger(LoggerNamespace namespace);
+  external set NodePackageImporter(JSClass function);
+  external set deprecations(Object? object);
+  external set Version(JSClass version);
 
   // Value APIs
   external set Value(JSClass function);
@@ -52,6 +55,9 @@ class Exports {
   external set NULL(value.Value sassNull);
   external set TRUE(value.SassBoolean sassTrue);
   external set FALSE(value.SassBoolean sassFalse);
+
+  // `sass-parser` APIs
+  external set loadParserExports_(Function function);
 }
 
 @JS()

@@ -11,6 +11,8 @@ import 'package:grinder/grinder.dart';
 import 'package:path/path.dart' as p;
 import 'package:source_span/source_span.dart';
 
+import 'grind/bump_version.dart';
+import 'grind/generate_deprecations.dart';
 import 'grind/synchronize.dart';
 import 'grind/utils.dart';
 
@@ -18,8 +20,10 @@ export 'grind/bazel.dart';
 export 'grind/benchmark.dart';
 export 'grind/double_check.dart';
 export 'grind/frameworks.dart';
-export 'grind/subpackages.dart';
+export 'grind/generate_deprecations.dart';
+export 'grind/sass_api.dart';
 export 'grind/synchronize.dart';
+export 'grind/utils.dart';
 
 void main(List<String> args) {
   pkg.humanName.value = "Dart Sass";
@@ -29,11 +33,23 @@ void main(List<String> args) {
   pkg.chocolateyNuspec.value = _nuspec;
   pkg.homebrewRepo.value = "sass/homebrew-sass";
   pkg.homebrewFormula.value = "Formula/sass.rb";
+  pkg.homebrewEditFormula.value = _updateHomebrewLanguageRevision;
   pkg.jsRequires.value = [
+    pkg.JSRequire(
+      "@parcel/watcher",
+      target: pkg.JSRequireTarget.cli,
+      lazy: true,
+      optional: true,
+    ),
     pkg.JSRequire("immutable", target: pkg.JSRequireTarget.all),
     pkg.JSRequire("chokidar", target: pkg.JSRequireTarget.cli),
     pkg.JSRequire("readline", target: pkg.JSRequireTarget.cli),
     pkg.JSRequire("fs", target: pkg.JSRequireTarget.node),
+    pkg.JSRequire(
+      "module",
+      target: pkg.JSRequireTarget.node,
+      identifier: 'nodeModule',
+    ),
     pkg.JSRequire("stream", target: pkg.JSRequireTarget.node),
     pkg.JSRequire("util", target: pkg.JSRequireTarget.node),
   ];
@@ -83,6 +99,10 @@ void main(List<String> args) {
     'FALSE',
     'NULL',
     'types',
+    'NodePackageImporter',
+    'deprecations',
+    'Version',
+    'parser_',
   };
 
   pkg.githubReleaseNotes.fn = () =>
@@ -99,20 +119,24 @@ void main(List<String> args) {
 
   pkg.environmentConstants.fn = () {
     if (!Directory('build/language').existsSync()) {
-      fail('Run `dart run grinder protobuf` before building Dart Sass '
-          'executables.');
+      fail(
+        'Run `dart run grinder protobuf` before building Dart Sass '
+        'executables.',
+      );
     }
 
     return {
       ...pkg.environmentConstants.defaultValue,
-      "protocol-version": File('build/language/spec/EMBEDDED_PROTOCOL_VERSION')
-          .readAsStringSync()
-          .trim(),
+      "protocol-version": File(
+        'build/language/spec/EMBEDDED_PROTOCOL_VERSION',
+      ).readAsStringSync().trim(),
       "compiler-version": pkg.pubspec.version!.toString(),
     };
   };
 
   pkg.addAllTasks();
+
+  addBumpVersionTasks();
 
   afterTask("pkg-npm-dev", _addDefaultExport);
   afterTask("pkg-npm-release", _addDefaultExport);
@@ -121,12 +145,13 @@ void main(List<String> args) {
 }
 
 @DefaultTask('Compile async code and reformat.')
-@Depends(format, synchronize)
+@Depends(format, synchronize, deprecations, protobuf)
 void all() {}
 
 @Task('Run the Dart formatter.')
 void format() {
-  run('dart', arguments: ['format', '--fix', '.']);
+  run('dart', arguments: ['format', '.']);
+  run('dart', arguments: ['fix', '--apply', '.']);
 }
 
 @Task('Installs dependencies from npm.')
@@ -134,8 +159,15 @@ void npmInstall() =>
     run(Platform.isWindows ? "npm.cmd" : "npm", arguments: ["install"]);
 
 @Task('Runs the tasks that are required for running tests.')
-@Depends(format, synchronize, protobuf, "pkg-npm-dev", npmInstall,
-    "pkg-standalone-dev")
+@Depends(
+  format,
+  synchronize,
+  protobuf,
+  deprecations,
+  "pkg-npm-dev",
+  npmInstall,
+  "pkg-standalone-dev",
+)
 void beforeTest() {}
 
 String get _nuspec => """
@@ -161,10 +193,11 @@ This package is Dart Sass, the new Dart implementation of Sass.</description>
 """;
 
 final _readAndResolveRegExp = RegExp(
-    r"^<!-- +#include +([^\s]+) +"
-    '"([^"\n]+)"'
-    r" +-->$",
-    multiLine: true);
+  r"^<!-- +#include +([^\s]+) +"
+  '"([^"\n]+)"'
+  r" +-->$",
+  multiLine: true,
+);
 
 /// Reads a Markdown file from [path] and resolves include directives.
 ///
@@ -172,9 +205,9 @@ final _readAndResolveRegExp = RegExp(
 /// which must appear on its own line. PATH is a relative file: URL to another
 /// Markdown file, and HEADER is the name of a header in that file whose
 /// contents should be included as-is.
-String _readAndResolveMarkdown(String path) => File(path)
-        .readAsStringSync()
-        .replaceAllMapped(_readAndResolveRegExp, (match) {
+String _readAndResolveMarkdown(String path) => File(
+      path,
+    ).readAsStringSync().replaceAllMapped(_readAndResolveRegExp, (match) {
       late String included;
       try {
         included = File(p.join(p.dirname(path), p.fromUri(match[1])))
@@ -205,17 +238,16 @@ String _readAndResolveMarkdown(String path) => File(path)
       return included.substring(headerMatch.end, sectionEnd).trim();
     });
 
-/// Returns a map from JS type declaration file names to their contnets.
+/// Returns a map from JS type declaration file names to their contents.
 Map<String, String> _fetchJSTypes() {
-  var languageRepo =
-      cloneOrCheckout("https://github.com/sass/sass", "main", name: 'language');
+  updateLanguageRepo();
 
-  var typeRoot = p.join(languageRepo, 'js-api-doc');
+  var typeRoot = p.join('build/language', 'js-api-doc');
   return {
     for (var entry in Directory(typeRoot).listSync(recursive: true))
       if (entry is File && entry.path.endsWith('.d.ts'))
         p.join('types', p.relative(entry.path, from: typeRoot)):
-            entry.readAsStringSync()
+            entry.readAsStringSync(),
   };
 }
 
@@ -226,6 +258,7 @@ void _matchError(Match match, String message, {Object? url}) {
 }
 
 @Task('Compile the protocol buffer definition to a Dart library.')
+@Depends(updateLanguageRepo)
 Future<void> protobuf() async {
   Directory('build').createSync(recursive: true);
 
@@ -245,18 +278,17 @@ dart run protoc_plugin "\$@"
     run('chmod', arguments: ['a+x', 'build/protoc-gen-dart']);
   }
 
-  if (Platform.environment['UPDATE_SASS_PROTOCOL'] != 'false') {
-    cloneOrCheckout("https://github.com/sass/sass.git", "main",
-        name: 'language');
-  }
-
-  await runAsync("buf",
-      arguments: ["generate"],
-      runOptions: RunOptions(environment: {
+  await runAsync(
+    "buf",
+    arguments: ["generate"],
+    runOptions: RunOptions(
+      environment: {
         "PATH": 'build' +
             (Platform.isWindows ? ";" : ":") +
-            Platform.environment["PATH"]!
-      }));
+            Platform.environment["PATH"]!,
+      },
+    ),
+  );
 }
 
 /// After building the NPM package, add default exports to
@@ -291,4 +323,33 @@ function defaultExportDeprecation() {
   buffer.writeln("};");
 
   File("build/npm/sass.node.mjs").writeAsStringSync(buffer.toString());
+}
+
+/// A regular expression to locate the language repo revision in the Dart Sass
+/// Homebrew formula.
+final _homebrewLanguageRegExp = RegExp(
+  r'resource "language" do$'
+  r'(?:(?! end$).)+'
+  r'revision: "([a-f0-9]{40})"',
+  dotAll: true,
+  multiLine: true,
+);
+
+/// Updates the Homebrew [formula] to change the revision of the language repo
+/// to the latest revision.
+String _updateHomebrewLanguageRevision(String formula) {
+  var languageRepoRevision = run(
+    "git",
+    arguments: ["ls-remote", "https://github.com/sass/sass"],
+    quiet: true,
+  ).split("\t").first;
+
+  var match = _homebrewLanguageRegExp.firstMatch(formula);
+  if (match == null) {
+    fail("Couldn't find a language repo revision in the Homebrew formula.");
+  }
+
+  return formula.substring(0, match.start) +
+      match.group(0)!.replaceFirst(match.group(1)!, languageRepoRevision) +
+      formula.substring(match.end);
 }

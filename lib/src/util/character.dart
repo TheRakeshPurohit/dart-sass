@@ -10,6 +10,11 @@ import 'package:charcode/charcode.dart';
 /// lowercase equivalents.
 const _asciiCaseBit = 0x20;
 
+/// The highest character allowed in CSS.
+///
+/// See https://drafts.csswg.org/css-syntax-3/#maximum-allowed-code-point
+const maxAllowedCharacter = 0x10FFFF;
+
 // Define these checks as extension getters so they can be used in pattern
 // matches.
 extension CharacterExtension on int {
@@ -34,6 +39,12 @@ extension CharacterExtension on int {
       // A character is a high surrogate exactly if it matches 0b110110XXXXXXXXXX.
       // 0x36 == 0b110110.
       this >> 10 == 0x36;
+
+  /// Returns whether [character] is the end of a UTF-16 surrogate pair.
+  bool get isLowSurrogate =>
+      // A character is a high surrogate exactly if it matches 0b110111XXXXXXXXXX.
+      // 0x36 == 0b110111.
+      this >> 10 == 0x37;
 
   /// Returns whether [character] is a Unicode private-use code point in the Basic
   /// Multilingual Plane.
@@ -92,16 +103,6 @@ int combineSurrogates(int highSurrogate, int lowSurrogate) =>
     // high/low surrogates.
     0x10000 + ((highSurrogate & 0x3FF) << 10) + (lowSurrogate & 0x3FF);
 
-// Returns whether [character] can start a simple selector other than a type
-// selector.
-bool isSimpleSelectorStart(int? character) =>
-    character == $asterisk ||
-    character == $lbracket ||
-    character == $dot ||
-    character == $hash ||
-    character == $percent ||
-    character == $colon;
-
 /// Returns whether [identifier] is module-private.
 ///
 /// Assumes [identifier] is a valid Sass identifier.
@@ -121,7 +122,7 @@ int asHex(int character) {
     <= $9 => character - $0,
     // ignore: non_constant_relational_pattern_expression
     <= $F => 10 + character - $A,
-    _ => 10 + character - $a
+    _ => 10 + character - $a,
   };
 }
 
@@ -156,7 +157,8 @@ int opposite(int character) => switch (character) {
       $lbrace => $rbrace,
       $lbracket => $rbracket,
       _ => throw ArgumentError(
-          '"${String.fromCharCode(character)}" isn\'t a brace-like character.')
+          '"${String.fromCharCode(character)}" isn\'t a brace-like character.',
+        ),
     };
 
 /// Returns [character], converted to upper case if it's an ASCII lowercase

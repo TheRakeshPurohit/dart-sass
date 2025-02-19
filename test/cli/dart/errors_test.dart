@@ -3,6 +3,7 @@
 // https://opensource.org/licenses/MIT.
 
 @TestOn('vm')
+library;
 
 import 'package:test/test.dart';
 import 'package:test_descriptor/test_descriptor.dart' as d;
@@ -15,19 +16,20 @@ void main() {
   sharedTests(runSass);
 
   test("for package urls", () async {
-    await d.file("test.scss", "@import 'package:nope/test';").create();
+    await d.file("test.scss", "@use 'package:nope/test';").create();
 
     var sass = await runSass(["--no-unicode", "test.scss"]);
     expect(
-        sass.stderr,
-        emitsInOrder([
-          "Error: Can't find stylesheet to import.",
-          "  ,",
-          "1 | @import 'package:nope/test';",
-          "  |         ^^^^^^^^^^^^^^^^^^^",
-          "  '",
-          "  test.scss 1:9  root stylesheet"
-        ]));
+      sass.stderr,
+      emitsInOrder([
+        "Error: Can't find stylesheet to import.",
+        "  ,",
+        "1 | @use 'package:nope/test';",
+        "  | ^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  '",
+        "  test.scss 1:1  root stylesheet",
+      ]),
+    );
     await sass.shouldExit(65);
   });
 }

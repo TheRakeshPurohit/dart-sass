@@ -6,7 +6,7 @@ import 'package:source_span/source_span.dart';
 
 import '../../../visitor/interface/expression.dart';
 import '../expression.dart';
-import '../argument_invocation.dart';
+import '../argument_list.dart';
 import '../callable_invocation.dart';
 import '../interpolation.dart';
 
@@ -15,13 +15,13 @@ import '../interpolation.dart';
 /// This is always a plain CSS function.
 ///
 /// {@category AST}
-final class InterpolatedFunctionExpression
-    implements Expression, CallableInvocation {
+final class InterpolatedFunctionExpression extends Expression
+    implements CallableInvocation {
   /// The name of the function being invoked.
   final Interpolation name;
 
   /// The arguments to pass to the function.
-  final ArgumentInvocation arguments;
+  final ArgumentList arguments;
 
   final FileSpan span;
 

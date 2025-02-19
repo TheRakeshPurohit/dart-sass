@@ -33,13 +33,21 @@ import 'options.dart';
 /// modification time. Note that these modification times are cached by [graph].
 ///
 /// Returns `(exitCode, error, stackTrace)` when an error occurs.
-Future<(int, String, String?)?> compileStylesheet(ExecutableOptions options,
-    StylesheetGraph graph, String? source, String? destination,
-    {bool ifModified = false}) async {
+Future<(int, String, String?)?> compileStylesheet(
+  ExecutableOptions options,
+  StylesheetGraph graph,
+  String? source,
+  String? destination, {
+  bool ifModified = false,
+}) async {
   try {
     await _compileStylesheetWithoutErrorHandling(
-        options, graph, source, destination,
-        ifModified: ifModified);
+      options,
+      graph,
+      source,
+      destination,
+      ifModified: ifModified,
+    );
   } on SassException catch (error, stackTrace) {
     if (destination != null && !options.emitErrorCss) {
       _tryDelete(destination);
@@ -49,7 +57,10 @@ Future<(int, String, String?)?> compileStylesheet(ExecutableOptions options,
     // Exit code 65 indicates invalid data per
     // https://www.freebsd.org/cgi/man.cgi?query=sysexits.
     return _getErrorWithStackTrace(
-        65, message, options.trace ? getTrace(error) ?? stackTrace : null);
+      65,
+      message,
+      options.trace ? getTrace(error) ?? stackTrace : null,
+    );
   } on FileSystemException catch (error, stackTrace) {
     var path = error.path;
     var message = path == null
@@ -58,23 +69,33 @@ Future<(int, String, String?)?> compileStylesheet(ExecutableOptions options,
 
     // Exit code 66 indicates no input.
     return _getErrorWithStackTrace(
-        66, message, options.trace ? getTrace(error) ?? stackTrace : null);
+      66,
+      message,
+      options.trace ? getTrace(error) ?? stackTrace : null,
+    );
   }
   return null;
 }
 
 /// Like [compileStylesheet], but throws errors instead of handling them
 /// internally.
-Future<void> _compileStylesheetWithoutErrorHandling(ExecutableOptions options,
-    StylesheetGraph graph, String? source, String? destination,
-    {bool ifModified = false}) async {
-  var importer = FilesystemImporter('.');
+Future<void> _compileStylesheetWithoutErrorHandling(
+  ExecutableOptions options,
+  StylesheetGraph graph,
+  String? source,
+  String? destination, {
+  bool ifModified = false,
+}) async {
+  var importer = FilesystemImporter.cwd;
   if (ifModified) {
     try {
       if (source != null &&
           destination != null &&
           !graph.modifiedSince(
-              p.toUri(source), modificationTime(destination), importer)) {
+            p.toUri(p.absolute(source)),
+            modificationTime(destination),
+            importer,
+          )) {
         return;
       }
     } on FileSystemException catch (_) {
@@ -95,22 +116,28 @@ Future<void> _compileStylesheetWithoutErrorHandling(ExecutableOptions options,
   try {
     if (options.asynchronous) {
       var importCache = AsyncImportCache(
-          loadPaths: options.loadPaths, logger: options.logger);
+        importers: options.pkgImporters,
+        loadPaths: options.loadPaths,
+      );
 
       result = source == null
-          ? await compileStringAsync(await readStdin(),
+          ? await compileStringAsync(
+              await readStdin(),
               syntax: syntax,
               logger: options.logger,
               importCache: importCache,
-              importer: FilesystemImporter('.'),
+              importer: FilesystemImporter.cwd,
               style: options.style,
               quietDeps: options.quietDeps,
               verbose: options.verbose,
               sourceMap: options.emitSourceMap,
               charset: options.charset,
+              silenceDeprecations: options.silenceDeprecations,
               fatalDeprecations: options.fatalDeprecations,
-              futureDeprecations: options.futureDeprecations)
-          : await compileAsync(source,
+              futureDeprecations: options.futureDeprecations,
+            )
+          : await compileAsync(
+              source,
               syntax: syntax,
               logger: options.logger,
               importCache: importCache,
@@ -119,23 +146,33 @@ Future<void> _compileStylesheetWithoutErrorHandling(ExecutableOptions options,
               verbose: options.verbose,
               sourceMap: options.emitSourceMap,
               charset: options.charset,
+              silenceDeprecations: options.silenceDeprecations,
               fatalDeprecations: options.fatalDeprecations,
-              futureDeprecations: options.futureDeprecations);
+              futureDeprecations: options.futureDeprecations,
+            );
     } else {
+      // Double-check that all modified files (according to mtime) are actually
+      // reloaded in the graph so we don't end up with stale ASTs.
+      graph.reloadAllModified();
+
       result = source == null
-          ? compileString(await readStdin(),
+          ? compileString(
+              await readStdin(),
               syntax: syntax,
               logger: options.logger,
               importCache: graph.importCache,
-              importer: FilesystemImporter('.'),
+              importer: FilesystemImporter.cwd,
               style: options.style,
               quietDeps: options.quietDeps,
               verbose: options.verbose,
               sourceMap: options.emitSourceMap,
               charset: options.charset,
+              silenceDeprecations: options.silenceDeprecations,
               fatalDeprecations: options.fatalDeprecations,
-              futureDeprecations: options.futureDeprecations)
-          : compile(source,
+              futureDeprecations: options.futureDeprecations,
+            )
+          : compile(
+              source,
               syntax: syntax,
               logger: options.logger,
               importCache: graph.importCache,
@@ -144,8 +181,10 @@ Future<void> _compileStylesheetWithoutErrorHandling(ExecutableOptions options,
               verbose: options.verbose,
               sourceMap: options.emitSourceMap,
               charset: options.charset,
+              silenceDeprecations: options.silenceDeprecations,
               fatalDeprecations: options.fatalDeprecations,
-              futureDeprecations: options.futureDeprecations);
+              futureDeprecations: options.futureDeprecations,
+            );
     }
   } on SassException catch (error) {
     if (options.emitErrorCss) {
@@ -197,7 +236,10 @@ Future<void> _compileStylesheetWithoutErrorHandling(ExecutableOptions options,
 ///
 /// Returns the source map comment to add to the end of the CSS file.
 String _writeSourceMap(
-    ExecutableOptions options, SingleMapping? sourceMap, String? destination) {
+  ExecutableOptions options,
+  SingleMapping? sourceMap,
+  String? destination,
+) {
   if (sourceMap == null) return "";
 
   if (destination != null) {
@@ -206,15 +248,21 @@ String _writeSourceMap(
 
   // TODO(nweiz): Don't explicitly use a type parameter when dart-lang/sdk#25490
   // is fixed.
-  mapInPlace<String>(sourceMap.urls,
-      (url) => options.sourceMapUrl(Uri.parse(url), destination).toString());
-  var sourceMapText =
-      jsonEncode(sourceMap.toJson(includeSourceContents: options.embedSources));
+  mapInPlace<String>(
+    sourceMap.urls,
+    (url) => options.sourceMapUrl(Uri.parse(url), destination).toString(),
+  );
+  var sourceMapText = jsonEncode(
+    sourceMap.toJson(includeSourceContents: options.embedSources),
+  );
 
   Uri url;
   if (options.embedSourceMap) {
-    url = Uri.dataFromString(sourceMapText,
-        mimeType: 'application/json', encoding: utf8);
+    url = Uri.dataFromString(
+      sourceMapText,
+      mimeType: 'application/json',
+      encoding: utf8,
+    );
   } else {
     // [destination] can't be null here because --embed-source-map is
     // incompatible with writing to stdout.
@@ -244,12 +292,15 @@ void _tryDelete(String path) {
 
 /// Return a Record of `(exitCode, error, stackTrace)` for the given error.
 (int, String, String?) _getErrorWithStackTrace(
-    int exitCode, String error, StackTrace? stackTrace) {
+  int exitCode,
+  String error,
+  StackTrace? stackTrace,
+) {
   return (
     exitCode,
     error,
     stackTrace != null
         ? Trace.from(stackTrace).terse.toString().trimRight()
-        : null
+        : null,
   );
 }

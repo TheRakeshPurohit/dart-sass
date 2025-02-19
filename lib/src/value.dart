@@ -100,7 +100,7 @@ abstract class Value {
   @internal
   bool get isVar => false;
 
-  /// Returns Dart's `null` value if this is [sassNull], and returns [this]
+  /// Returns Dart's `null` value if this is [sassNull], and returns `this`
   /// otherwise.
   Value? get realNull => this;
 
@@ -127,28 +127,30 @@ abstract class Value {
     var indexValue = sassIndex.assertNumber(name);
     if (indexValue.hasUnits) {
       warnForDeprecation(
-          "\$$name: Passing a number with unit ${indexValue.unitString} is "
-          "deprecated.\n"
-          "\n"
-          "To preserve current behavior: "
-          "${indexValue.unitSuggestion(name ?? 'index')}\n"
-          "\n"
-          "More info: https://sass-lang.com/d/function-units",
-          Deprecation.functionUnits);
+        "\$$name: Passing a number with unit ${indexValue.unitString} is "
+        "deprecated.\n"
+        "\n"
+        "To preserve current behavior: "
+        "${indexValue.unitSuggestion(name ?? 'index')}\n"
+        "\n"
+        "More info: https://sass-lang.com/d/function-units",
+        Deprecation.functionUnits,
+      );
     }
 
     var index = indexValue.assertInt(name);
     if (index == 0) throw SassScriptException("List index may not be 0.", name);
     if (index.abs() > lengthAsList) {
       throw SassScriptException(
-          "Invalid index $sassIndex for a list with $lengthAsList elements.",
-          name);
+        "Invalid index $sassIndex for a list with $lengthAsList elements.",
+        name,
+      );
     }
 
     return index < 0 ? lengthAsList + index : index - 1;
   }
 
-  /// Throws a [SassScriptException] if [this] isn't a boolean.
+  /// Throws a [SassScriptException] if `this` isn't a boolean.
   ///
   /// Note that generally, functions should use [isTruthy] rather than requiring
   /// a literal boolean.
@@ -158,77 +160,105 @@ abstract class Value {
   SassBoolean assertBoolean([String? name]) =>
       throw SassScriptException("$this is not a boolean.", name);
 
-  /// Throws a [SassScriptException] if [this] isn't a calculation.
+  /// Throws a [SassScriptException] if `this` isn't a calculation.
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
   SassCalculation assertCalculation([String? name]) =>
       throw SassScriptException("$this is not a calculation.", name);
 
-  /// Throws a [SassScriptException] if [this] isn't a color.
+  /// Throws a [SassScriptException] if `this` isn't a color.
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
   SassColor assertColor([String? name]) =>
       throw SassScriptException("$this is not a color.", name);
 
-  /// Throws a [SassScriptException] if [this] isn't a function reference.
+  /// Throws a [SassScriptException] if `this` isn't a function reference.
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
   SassFunction assertFunction([String? name]) =>
       throw SassScriptException("$this is not a function reference.", name);
 
-  /// Throws a [SassScriptException] if [this] isn't a mixin reference.
+  /// Throws a [SassScriptException] if `this` isn't a mixin reference.
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
   SassMixin assertMixin([String? name]) =>
       throw SassScriptException("$this is not a mixin reference.", name);
 
-  /// Throws a [SassScriptException] if [this] isn't a map.
+  /// Throws a [SassScriptException] if `this` isn't a map.
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
   SassMap assertMap([String? name]) =>
       throw SassScriptException("$this is not a map.", name);
 
-  /// Returns [this] as a [SassMap] if it is one (including empty lists, which
+  /// Returns `this` as a [SassMap] if it is one (including empty lists, which
   /// count as empty maps) or returns `null` if it's not.
   SassMap? tryMap() => null;
 
-  /// Throws a [SassScriptException] if [this] isn't a number.
+  /// Throws a [SassScriptException] if `this` isn't a number.
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
   SassNumber assertNumber([String? name]) =>
       throw SassScriptException("$this is not a number.", name);
 
-  /// Throws a [SassScriptException] if [this] isn't a string.
+  /// Throws a [SassScriptException] if `this` isn't a string.
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
   SassString assertString([String? name]) =>
       throw SassScriptException("$this is not a string.", name);
 
-  /// Converts a `selector-parse()`-style input into a string that can be
-  /// parsed.
+  /// Throws a [SassScriptException] if `this` isn't a list of the sort commonly
+  /// used in plain CSS expression syntax: space-separated and unbracketed.
   ///
-  /// Throws a [SassScriptException] if [this] isn't a type or a structure that
-  /// can be parsed as a selector.
-  String _selectorString([String? name]) {
-    if (_selectorStringOrNull() case var string?) return string;
+  /// If [allowSlash] is `true`, this allows slash-separated lists as well.
+  ///
+  /// If this came from a function argument, [name] is the argument name
+  /// (without the `$`). It's used for error reporting.
+  ///
+  /// @nodoc
+  @internal
+  List<Value> assertCommonListStyle(String? name, {required bool allowSlash}) {
+    var invalidSeparator = separator == ListSeparator.comma ||
+        (!allowSlash && separator == ListSeparator.slash);
+    if (!invalidSeparator && !hasBrackets) return asList;
 
-    throw SassScriptException(
-        "$this is not a valid selector: it must be a string,\n"
-        "a list of strings, or a list of lists of strings.",
-        name);
+    var buffer = StringBuffer(r"Expected");
+    if (hasBrackets) buffer.write(" an unbracketed");
+    if (invalidSeparator) {
+      buffer.write(hasBrackets ? "," : " a");
+      buffer.write(" space-");
+      if (allowSlash) buffer.write(" or slash-");
+      buffer.write("separated");
+    }
+    buffer.write(" list, was $this");
+    throw SassScriptException(buffer.toString(), name);
   }
 
   /// Converts a `selector-parse()`-style input into a string that can be
   /// parsed.
   ///
-  /// Returns `null` if [this] isn't a type or a structure that can be parsed as
+  /// Throws a [SassScriptException] if `this` isn't a type or a structure that
+  /// can be parsed as a selector.
+  String _selectorString([String? name]) {
+    if (_selectorStringOrNull() case var string?) return string;
+
+    throw SassScriptException(
+      "$this is not a valid selector: it must be a string,\n"
+      "a list of strings, or a list of lists of strings.",
+      name,
+    );
+  }
+
+  /// Converts a `selector-parse()`-style input into a string that can be
+  /// parsed.
+  ///
+  /// Returns `null` if `this` isn't a type or a structure that can be parsed as
   /// a selector.
   String? _selectorStringOrNull() {
     var self = this;
@@ -264,10 +294,16 @@ abstract class Value {
 
   /// Returns a new list containing [contents] that defaults to this value's
   /// separator and brackets.
-  SassList withListContents(Iterable<Value> contents,
-      {ListSeparator? separator, bool? brackets}) {
-    return SassList(contents, separator ?? this.separator,
-        brackets: brackets ?? hasBrackets);
+  SassList withListContents(
+    Iterable<Value> contents, {
+    ListSeparator? separator,
+    bool? brackets,
+  }) {
+    return SassList(
+      contents,
+      separator ?? this.separator,
+      brackets: brackets ?? hasBrackets,
+    );
   }
 
   /// The SassScript `=` operation.
@@ -324,11 +360,13 @@ abstract class Value {
   /// @nodoc
   @internal
   Value plus(Value other) => switch (other) {
-        SassString() =>
-          SassString(toCssString() + other.text, quotes: other.hasQuotes),
+        SassString() => SassString(
+            toCssString() + other.text,
+            quotes: other.hasQuotes,
+          ),
         SassCalculation() =>
           throw SassScriptException('Undefined operation "$this + $other".'),
-        _ => SassString(toCssString() + other.toCssString(), quotes: false)
+        _ => SassString(toCssString() + other.toCssString(), quotes: false),
       };
 
   /// The SassScript `-` operation.
@@ -337,7 +375,10 @@ abstract class Value {
   @internal
   Value minus(Value other) => other is SassCalculation
       ? throw SassScriptException('Undefined operation "$this - $other".')
-      : SassString("${toCssString()}-${other.toCssString()}", quotes: false);
+      : SassString(
+          "${toCssString()}-${other.toCssString()}",
+          quotes: false,
+        );
 
   /// The SassScript `/` operation.
   ///
@@ -370,7 +411,7 @@ abstract class Value {
   @internal
   Value unaryNot() => sassFalse;
 
-  /// Returns a copy of [this] without [SassNumber.asSlash] set.
+  /// Returns a copy of `this` without [SassNumber.asSlash] set.
   ///
   /// If this isn't a [SassNumber], returns it as-is.
   ///
@@ -378,9 +419,9 @@ abstract class Value {
   @internal
   Value withoutSlash() => this;
 
-  /// Returns a valid CSS representation of [this].
+  /// Returns a valid CSS representation of `this`.
   ///
-  /// Throws a [SassScriptException] if [this] can't be represented in plain
+  /// Throws a [SassScriptException] if `this` can't be represented in plain
   /// CSS. Use [toString] instead to get a string representation even if this
   /// isn't valid CSS.
   //
@@ -389,11 +430,11 @@ abstract class Value {
   String toCssString({@internal bool quote = true}) =>
       serializeValue(this, quote: quote);
 
-  /// Returns a string representation of [this].
+  /// Returns a string representation of `this`.
   ///
   /// Note that this is equivalent to calling `inspect()` on the value, and thus
   /// won't reflect the user's output settings. [toCssString] should be used
-  /// instead to convert [this] to CSS.
+  /// instead to convert `this` to CSS.
   String toString() => serializeValue(this, inspect: true);
 }
 
@@ -404,7 +445,7 @@ abstract class Value {
 ///
 /// {@category Value}
 extension SassApiValue on Value {
-  /// Parses [this] as a selector list, in the same manner as the
+  /// Parses `this` as a selector list, in the same manner as the
   /// `selector-parse()` function.
   ///
   /// Throws a [SassScriptException] if this isn't a type that can be parsed as a
@@ -421,14 +462,14 @@ extension SassApiValue on Value {
       // TODO(nweiz): colorize this if we're running in an environment where
       // that works.
       throwWithTrace(
-          SassScriptException(
-              error.toString().replaceFirst("Error: ", ""), name),
-          error,
-          stackTrace);
+        SassScriptException(error.toString().replaceFirst("Error: ", ""), name),
+        error,
+        stackTrace,
+      );
     }
   }
 
-  /// Parses [this] as a simple selector, in the same manner as the
+  /// Parses `this` as a simple selector, in the same manner as the
   /// `selector-parse()` function.
   ///
   /// Throws a [SassScriptException] if this isn't a type that can be parsed as a
@@ -437,8 +478,10 @@ extension SassApiValue on Value {
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
-  SimpleSelector assertSimpleSelector(
-      {String? name, bool allowParent = false}) {
+  SimpleSelector assertSimpleSelector({
+    String? name,
+    bool allowParent = false,
+  }) {
     var string = _selectorString(name);
     try {
       return SimpleSelector.parse(string, allowParent: allowParent);
@@ -446,14 +489,14 @@ extension SassApiValue on Value {
       // TODO(nweiz): colorize this if we're running in an environment where
       // that works.
       throwWithTrace(
-          SassScriptException(
-              error.toString().replaceFirst("Error: ", ""), name),
-          error,
-          stackTrace);
+        SassScriptException(error.toString().replaceFirst("Error: ", ""), name),
+        error,
+        stackTrace,
+      );
     }
   }
 
-  /// Parses [this] as a compound selector, in the same manner as the
+  /// Parses `this` as a compound selector, in the same manner as the
   /// `selector-parse()` function.
   ///
   /// Throws a [SassScriptException] if this isn't a type that can be parsed as a
@@ -462,8 +505,10 @@ extension SassApiValue on Value {
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
-  CompoundSelector assertCompoundSelector(
-      {String? name, bool allowParent = false}) {
+  CompoundSelector assertCompoundSelector({
+    String? name,
+    bool allowParent = false,
+  }) {
     var string = _selectorString(name);
     try {
       return CompoundSelector.parse(string, allowParent: allowParent);
@@ -471,14 +516,14 @@ extension SassApiValue on Value {
       // TODO(nweiz): colorize this if we're running in an environment where
       // that works.
       throwWithTrace(
-          SassScriptException(
-              error.toString().replaceFirst("Error: ", ""), name),
-          error,
-          stackTrace);
+        SassScriptException(error.toString().replaceFirst("Error: ", ""), name),
+        error,
+        stackTrace,
+      );
     }
   }
 
-  /// Parses [this] as a complex selector, in the same manner as the
+  /// Parses `this` as a complex selector, in the same manner as the
   /// `selector-parse()` function.
   ///
   /// Throws a [SassScriptException] if this isn't a type that can be parsed as a
@@ -487,8 +532,10 @@ extension SassApiValue on Value {
   ///
   /// If this came from a function argument, [name] is the argument name
   /// (without the `$`). It's used for error reporting.
-  ComplexSelector assertComplexSelector(
-      {String? name, bool allowParent = false}) {
+  ComplexSelector assertComplexSelector({
+    String? name,
+    bool allowParent = false,
+  }) {
     var string = _selectorString(name);
     try {
       return ComplexSelector.parse(string, allowParent: allowParent);
@@ -496,10 +543,10 @@ extension SassApiValue on Value {
       // TODO(nweiz): colorize this if we're running in an environment where
       // that works.
       throwWithTrace(
-          SassScriptException(
-              error.toString().replaceFirst("Error: ", ""), name),
-          error,
-          stackTrace);
+        SassScriptException(error.toString().replaceFirst("Error: ", ""), name),
+        error,
+        stackTrace,
+      );
     }
   }
 }

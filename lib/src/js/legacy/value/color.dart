@@ -4,6 +4,7 @@
 
 import 'package:js/js.dart';
 
+import '../../../util/nullable.dart';
 import '../../../util/number.dart';
 import '../../../value.dart';
 import '../../reflection.dart';
@@ -19,9 +20,14 @@ Object newNodeSassColor(SassColor value) =>
     legacyColorClass.construct([null, null, null, null, value]);
 
 /// The JS `sass.types.Color` class.
-final JSClass legacyColorClass = createJSClass('sass.types.Color',
-    (_NodeSassColor thisArg, num? redOrArgb,
-        [num? green, num? blue, num? alpha, SassColor? dartValue]) {
+final JSClass legacyColorClass = createJSClass('sass.types.Color', (
+  _NodeSassColor thisArg,
+  num? redOrArgb, [
+  num? green,
+  num? blue,
+  num? alpha,
+  SassColor? dartValue,
+]) {
   if (dartValue != null) {
     thisArg.dartValue = dartValue;
     return;
@@ -46,7 +52,11 @@ final JSClass legacyColorClass = createJSClass('sass.types.Color',
   }
 
   thisArg.dartValue = SassColor.rgb(
-      _clamp(red), _clamp(green), _clamp(blue), alpha?.clamp(0, 1) ?? 1);
+    _clamp(red),
+    _clamp(green),
+    _clamp(blue),
+    alpha.andThen((alpha) => clampLikeCss(alpha.toDouble(), 0, 1)) ?? 1,
+  );
 })
   ..defineMethods({
     'getR': (_NodeSassColor thisArg) => thisArg.dartValue.red,
@@ -63,10 +73,12 @@ final JSClass legacyColorClass = createJSClass('sass.types.Color',
       thisArg.dartValue = thisArg.dartValue.changeRgb(blue: _clamp(value));
     },
     'setA': (_NodeSassColor thisArg, num value) {
-      thisArg.dartValue = thisArg.dartValue.changeRgb(alpha: value.clamp(0, 1));
-    }
+      thisArg.dartValue = thisArg.dartValue.changeRgb(
+        alpha: clampLikeCss(value.toDouble(), 0, 1),
+      );
+    },
   });
 
 /// Clamps [channel] within the range 0, 255 and rounds it to the nearest
 /// integer.
-int _clamp(num channel) => fuzzyRound(channel.clamp(0, 255));
+int _clamp(num channel) => fuzzyRound(clampLikeCss(channel.toDouble(), 0, 255));

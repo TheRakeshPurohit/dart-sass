@@ -6,7 +6,6 @@ import 'package:meta/meta.dart';
 import 'package:source_span/source_span.dart';
 
 import '../../../exception.dart';
-import '../../../logger.dart';
 import '../../../parse/scss.dart';
 import '../../../util/span.dart';
 import '../../../visitor/interface/statement.dart';
@@ -18,7 +17,7 @@ import '../statement.dart';
 /// A `@use` rule.
 ///
 /// {@category AST}
-final class UseRule implements Statement, SassDependency {
+final class UseRule extends Statement implements SassDependency {
   /// The URI of the module to use.
   ///
   /// If this is relative, it's relative to the containing file.
@@ -35,15 +34,21 @@ final class UseRule implements Statement, SassDependency {
 
   FileSpan get urlSpan => span.withoutInitialAtRule().initialQuoted();
 
-  UseRule(this.url, this.namespace, this.span,
-      {Iterable<ConfiguredVariable>? configuration})
-      : configuration = configuration == null
+  UseRule(
+    this.url,
+    this.namespace,
+    this.span, {
+    Iterable<ConfiguredVariable>? configuration,
+  }) : configuration = configuration == null
             ? const []
             : List<ConfiguredVariable>.unmodifiable(configuration) {
     for (var variable in this.configuration) {
       if (variable.isGuarded) {
-        throw ArgumentError.value(variable, "configured variable",
-            "can't be guarded in a @use rule.");
+        throw ArgumentError.value(
+          variable,
+          "configured variable",
+          "can't be guarded in a @use rule.",
+        );
       }
     }
   }
@@ -56,14 +61,15 @@ final class UseRule implements Statement, SassDependency {
   ///
   /// @nodoc
   @internal
-  factory UseRule.parse(String contents, {Object? url, Logger? logger}) =>
-      ScssParser(contents, url: url, logger: logger).parseUseRule();
+  factory UseRule.parse(String contents, {Object? url}) =>
+      ScssParser(contents, url: url).parseUseRule().$1;
 
   T accept<T>(StatementVisitor<T> visitor) => visitor.visitUseRule(this);
 
   String toString() {
-    var buffer =
-        StringBuffer("@use ${StringExpression.quoteText(url.toString())}");
+    var buffer = StringBuffer(
+      "@use ${StringExpression.quoteText(url.toString())}",
+    );
 
     var basename = url.pathSegments.isEmpty ? "" : url.pathSegments.last;
     var dot = basename.indexOf(".");

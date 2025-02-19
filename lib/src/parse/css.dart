@@ -7,46 +7,57 @@ import 'package:string_scanner/string_scanner.dart';
 
 import '../ast/sass.dart';
 import '../functions.dart';
+import '../interpolation_buffer.dart';
 import 'scss.dart';
 
 /// The set of all function names disallowed in plain CSS.
 final _disallowedFunctionNames =
     globalFunctions.map((function) => function.name).toSet()
       ..add("if")
-      ..remove("rgb")
-      ..remove("rgba")
+      ..remove("abs")
+      ..remove("alpha")
+      ..remove("color")
+      ..remove("grayscale")
       ..remove("hsl")
       ..remove("hsla")
-      ..remove("grayscale")
+      ..remove("hwb")
       ..remove("invert")
-      ..remove("alpha")
-      ..remove("opacity")
-      ..remove("saturate")
-      ..remove("min")
+      ..remove("lab")
+      ..remove("lch")
       ..remove("max")
+      ..remove("min")
+      ..remove("oklab")
+      ..remove("oklch")
+      ..remove("opacity")
+      ..remove("rgb")
+      ..remove("rgba")
       ..remove("round")
-      ..remove("abs");
+      ..remove("saturate");
 
 class CssParser extends ScssParser {
   bool get plainCss => true;
 
-  CssParser(super.contents, {super.url, super.logger});
+  CssParser(super.contents, {super.url});
 
-  void silentComment() {
+  bool silentComment() {
+    if (inExpression) return false;
+
     var start = scanner.state;
     super.silentComment();
-    error("Silent comments aren't allowed in plain CSS.",
-        scanner.spanFrom(start));
+    error(
+      "Silent comments aren't allowed in plain CSS.",
+      scanner.spanFrom(start),
+    );
   }
 
   Statement atRule(Statement child(), {bool root = false}) {
-    // NOTE: this logic is largely duplicated in CssParser.atRule. Most changes
+    // NOTE: this logic is largely duplicated in StylesheetParser.atRule. Most changes
     // here should be mirrored there.
 
     var start = scanner.state;
     scanner.expectChar($at);
     var name = interpolatedIdentifier();
-    whitespace();
+    _whitespace();
 
     return switch (name.asPlain) {
       "at-root" ||
@@ -63,17 +74,17 @@ class CssParser extends ScssParser {
       "return" ||
       "warn" ||
       "while" =>
-        _forbiddenAtRoot(start),
+        _forbiddenAtRule(start),
       "import" => _cssImportRule(start),
       "media" => mediaRule(start),
       "-moz-document" => mozDocumentRule(start, name),
       "supports" => supportsRule(start),
-      _ => unknownAtRule(start, name)
+      _ => unknownAtRule(start, name),
     };
   }
 
   /// Throws an error for a forbidden at-rule.
-  Never _forbiddenAtRoot(LineScannerState start) {
+  Never _forbiddenAtRule(LineScannerState start) {
     almostAnyValue();
     error("This at-rule isn't allowed in plain CSS.", scanner.spanFrom(start));
   }
@@ -84,17 +95,40 @@ class CssParser extends ScssParser {
   ImportRule _cssImportRule(LineScannerState start) {
     var urlStart = scanner.state;
     var url = switch (scanner.peekChar()) {
-      $u || $U => dynamicUrl(),
-      _ => StringExpression(interpolatedString().asInterpolation(static: true))
+      $u || $U => switch (dynamicUrl()) {
+          StringExpression string => string.text,
+          InterpolatedFunctionExpression(
+            :var name,
+            arguments: ArgumentList(
+              positional: [StringExpression string],
+              named: Map(isEmpty: true),
+              rest: null,
+              keywordRest: null,
+            ),
+            :var span,
+          ) =>
+            (InterpolationBuffer()
+                  ..addInterpolation(name)
+                  ..writeCharCode($lparen)
+                  ..addInterpolation(string.asInterpolation())
+                  ..writeCharCode($rparen))
+                .interpolation(span),
+          // This shouldn't be reachable.
+          var expression => error(
+              "Unsupported plain CSS import.",
+              expression.span,
+            ),
+        },
+      _ => StringExpression(
+          interpolatedString().asInterpolation(static: true),
+        ).text,
     };
-    var urlSpan = scanner.spanFrom(urlStart);
 
-    whitespace();
+    _whitespace();
     var modifiers = tryImportModifiers();
     expectStatementSeparator("@import rule");
     return ImportRule([
-      StaticImport(Interpolation([url], urlSpan), scanner.spanFrom(urlStart),
-          modifiers: modifiers)
+      StaticImport(url, scanner.spanFrom(urlStart), modifiers: modifiers),
     ], scanner.spanFrom(start));
   }
 
@@ -103,7 +137,7 @@ class CssParser extends ScssParser {
     // evaluation time.
     var start = scanner.state;
     scanner.expectChar($lparen);
-    whitespace();
+    _whitespace();
     var expression = expressionUntilComma();
     scanner.expectChar($rparen);
     return ParenthesizedExpression(expression, scanner.spanFrom(start));
@@ -128,7 +162,7 @@ class CssParser extends ScssParser {
     var arguments = <Expression>[];
     if (!scanner.scanChar($rparen)) {
       do {
-        whitespace();
+        _whitespace();
         if (allowEmptySecondArg &&
             arguments.length == 1 &&
             scanner.peekChar() == $rparen) {
@@ -137,25 +171,32 @@ class CssParser extends ScssParser {
         }
 
         arguments.add(expressionUntilComma(singleEquals: true));
-        whitespace();
+        _whitespace();
       } while (scanner.scanChar($comma));
       scanner.expectChar($rparen);
     }
 
     if (_disallowedFunctionNames.contains(plain)) {
       error(
-          "This function isn't allowed in plain CSS.", scanner.spanFrom(start));
+        "This function isn't allowed in plain CSS.",
+        scanner.spanFrom(start),
+      );
     }
 
     return FunctionExpression(
-        plain,
-        ArgumentInvocation(
-            arguments, const {}, scanner.spanFrom(beforeArguments)),
-        scanner.spanFrom(start));
+      plain,
+      ArgumentList(arguments, const {}, scanner.spanFrom(beforeArguments)),
+      scanner.spanFrom(start),
+    );
   }
 
   Expression namespacedExpression(String namespace, LineScannerState start) {
     var expression = super.namespacedExpression(namespace, start);
     error("Module namespaces aren't allowed in plain CSS.", expression.span);
+  }
+
+  /// The value of `consumeNewlines` is not relevant for this class.
+  void _whitespace() {
+    whitespace(consumeNewlines: true);
   }
 }

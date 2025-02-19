@@ -9,12 +9,12 @@ import 'package:package_config/package_config_types.dart';
 import 'package:path/path.dart' as p;
 
 import 'ast/sass.dart';
-import 'deprecation.dart';
 import 'importer.dart';
+import 'importer/canonicalize_context.dart';
 import 'importer/no_op.dart';
 import 'importer/utils.dart';
 import 'io.dart';
-import 'logger.dart';
+import 'util/map.dart';
 import 'util/nullable.dart';
 import 'utils.dart';
 
@@ -35,44 +35,43 @@ final class AsyncImportCache {
   /// The importers to use when loading new Sass files.
   final List<AsyncImporter> _importers;
 
-  /// The logger to use to emit warnings when parsing stylesheets.
-  final Logger _logger;
-
   /// The canonicalized URLs for each non-canonical URL.
   ///
   /// The `forImport` in each key is true when this canonicalization is for an
   /// `@import` rule. Otherwise, it's for a `@use` or `@forward` rule.
   ///
-  /// This cache isn't used for relative imports, because they depend on the
-  /// specific base importer. That's stored separately in
-  /// [_relativeCanonicalizeCache].
+  /// This cache covers loads that go through the entire chain of [_importers],
+  /// but it doesn't cover individual loads or loads in which any importer
+  /// accesses `containingUrl`. See also [_perImporterCanonicalizeCache].
   final _canonicalizeCache =
       <(Uri, {bool forImport}), AsyncCanonicalizeResult?>{};
 
-  /// The canonicalized URLs for each non-canonical URL that's resolved using a
-  /// relative importer.
+  /// Like [_canonicalizeCache] but also includes the specific importer in the
+  /// key.
   ///
-  /// The map's keys have four parts:
+  /// This is used to cache both relative imports from the base importer and
+  /// individual importer results in the case where some other component of the
+  /// importer chain isn't cacheable.
+  final _perImporterCanonicalizeCache =
+      <(AsyncImporter, Uri, {bool forImport}), AsyncCanonicalizeResult?>{};
+
+  /// A map from the keys in [_perImporterCanonicalizeCache] that are generated
+  /// for relative URL loads against the base importer to the original relative
+  /// URLs what were loaded.
   ///
-  /// 1. The URL passed to [canonicalize] (the same as in [_canonicalizeCache]).
-  /// 2. Whether the canonicalization is for an `@import` rule.
-  /// 3. The `baseImporter` passed to [canonicalize].
-  /// 4. The `baseUrl` passed to [canonicalize].
-  ///
-  /// The map's values are the same as the return value of [canonicalize].
-  final _relativeCanonicalizeCache = <(
-    Uri, {
-    bool forImport,
-    AsyncImporter baseImporter,
-    Uri? baseUrl
-  }),
-      AsyncCanonicalizeResult?>{};
+  /// This is used to invalidate the cache when files are changed.
+  final _nonCanonicalRelativeUrls =
+      <(AsyncImporter, Uri, {bool forImport}), Uri>{};
 
   /// The parsed stylesheets for each canonicalized import URL.
   final _importCache = <Uri, Stylesheet?>{};
 
   /// The import results for each canonicalized import URL.
   final _resultsCache = <Uri, ImporterResult>{};
+
+  /// A map from canonical URLs to the most recent time at which those URLs were
+  /// loaded from their importers.
+  final _loadTimes = <Uri, DateTime>{};
 
   /// Creates an import cache that resolves imports using [importers].
   ///
@@ -91,23 +90,27 @@ final class AsyncImportCache {
   ///   this is a shorthand for adding a [PackageImporter] to [importers].
   ///
   /// [`PackageConfig`]: https://pub.dev/documentation/package_config/latest/package_config.package_config/PackageConfig-class.html
-  AsyncImportCache(
-      {Iterable<AsyncImporter>? importers,
-      Iterable<String>? loadPaths,
-      PackageConfig? packageConfig,
-      Logger? logger})
-      : _importers = _toImporters(importers, loadPaths, packageConfig),
-        _logger = logger ?? const Logger.stderr();
+  AsyncImportCache({
+    Iterable<AsyncImporter>? importers,
+    Iterable<String>? loadPaths,
+    PackageConfig? packageConfig,
+  }) : _importers = _toImporters(importers, loadPaths, packageConfig);
 
   /// Creates an import cache without any globally-available importers.
-  AsyncImportCache.none({Logger? logger})
-      : _importers = const [],
-        _logger = logger ?? const Logger.stderr();
+  AsyncImportCache.none() : _importers = const [];
+
+  /// Creates an import cache without any globally-available importers, and only
+  /// the passed in importers.
+  AsyncImportCache.only(Iterable<AsyncImporter> importers)
+      : _importers = List.unmodifiable(importers);
 
   /// Converts the user's [importers], [loadPaths], and [packageConfig]
   /// options into a single list of importers.
-  static List<AsyncImporter> _toImporters(Iterable<AsyncImporter>? importers,
-      Iterable<String>? loadPaths, PackageConfig? packageConfig) {
+  static List<AsyncImporter> _toImporters(
+    Iterable<AsyncImporter>? importers,
+    Iterable<String>? loadPaths,
+    PackageConfig? packageConfig,
+  ) {
     var sassPath = getEnvironmentVariable('SASS_PATH');
     if (isBrowser) return [...?importers];
     return [
@@ -117,7 +120,7 @@ final class AsyncImportCache {
       if (sassPath != null)
         for (var path in sassPath.split(isWindows ? ';' : ':'))
           FilesystemImporter(path),
-      if (packageConfig != null) PackageImporter(packageConfig)
+      if (packageConfig != null) PackageImporter(packageConfig),
     ];
   }
 
@@ -136,10 +139,12 @@ final class AsyncImportCache {
   /// If any importers understand [url], returns that importer as well as the
   /// canonicalized URL and the original URL (resolved relative to [baseUrl] if
   /// applicable). Otherwise, returns `null`.
-  Future<AsyncCanonicalizeResult?> canonicalize(Uri url,
-      {AsyncImporter? baseImporter,
-      Uri? baseUrl,
-      bool forImport = false}) async {
+  Future<AsyncCanonicalizeResult?> canonicalize(
+    Uri url, {
+    AsyncImporter? baseImporter,
+    Uri? baseUrl,
+    bool forImport = false,
+  }) async {
     if (isBrowser &&
         (baseImporter == null || baseImporter is NoOpImporter) &&
         _importers.isEmpty) {
@@ -148,64 +153,121 @@ final class AsyncImportCache {
     }
 
     if (baseImporter != null && url.scheme == '') {
+      var resolvedUrl = baseUrl?.resolveUri(url) ?? url;
+      var key = (baseImporter, resolvedUrl, forImport: forImport);
       var relativeResult = await putIfAbsentAsync(
-          _relativeCanonicalizeCache,
-          (
-            url,
-            forImport: forImport,
-            baseImporter: baseImporter,
-            baseUrl: baseUrl
-          ),
-          () => _canonicalize(baseImporter, baseUrl?.resolveUri(url) ?? url,
-              baseUrl, forImport));
+        _perImporterCanonicalizeCache,
+        key,
+        () async {
+          var (result, cacheable) = await _canonicalize(
+            baseImporter,
+            resolvedUrl,
+            baseUrl,
+            forImport,
+          );
+          assert(
+            cacheable,
+            "Relative loads should always be cacheable because they never "
+            "provide access to the containing URL.",
+          );
+          if (baseUrl != null) _nonCanonicalRelativeUrls[key] = url;
+          return result;
+        },
+      );
       if (relativeResult != null) return relativeResult;
     }
 
-    return await putIfAbsentAsync(
-        _canonicalizeCache, (url, forImport: forImport), () async {
-      for (var importer in _importers) {
-        if (await _canonicalize(importer, url, baseUrl, forImport)
-            case var result?) {
+    var key = (url, forImport: forImport);
+    if (_canonicalizeCache.containsKey(key)) return _canonicalizeCache[key];
+
+    // Each individual call to a `canonicalize()` override may not be cacheable
+    // (specifically, if it has access to `containingUrl` it's too
+    // context-sensitive to usefully cache). We want to cache a given URL across
+    // the _entire_ importer chain, so we use [cacheable] to track whether _all_
+    // `canonicalize()` calls we've attempted are cacheable. Only if they are, do
+    // we store the result in the cache.
+    var cacheable = true;
+    for (var i = 0; i < _importers.length; i++) {
+      var importer = _importers[i];
+      var perImporterKey = (importer, url, forImport: forImport);
+      switch (_perImporterCanonicalizeCache.getOption(perImporterKey)) {
+        case (var result?,):
           return result;
-        }
+        case (null,):
+          continue;
       }
 
-      return null;
-    });
+      switch (await _canonicalize(importer, url, baseUrl, forImport)) {
+        case (var result?, true) when cacheable:
+          _canonicalizeCache[key] = result;
+          return result;
+
+        case (var result, true) when !cacheable:
+          _perImporterCanonicalizeCache[perImporterKey] = result;
+          if (result != null) return result;
+
+        case (var result, false):
+          if (cacheable) {
+            // If this is the first uncacheable result, add all previous results
+            // to the per-importer cache so we don't have to re-run them for
+            // future uses of this importer.
+            for (var j = 0; j < i; j++) {
+              _perImporterCanonicalizeCache[(
+                _importers[j],
+                url,
+                forImport: forImport,
+              )] = null;
+            }
+            cacheable = false;
+          }
+
+          if (result != null) return result;
+      }
+    }
+
+    if (cacheable) _canonicalizeCache[key] = null;
+    return null;
   }
 
   /// Calls [importer.canonicalize] and prints a deprecation warning if it
   /// returns a relative URL.
   ///
-  /// If [resolveUrl] is `true`, this resolves [url] relative to [baseUrl]
-  /// before passing it to [importer].
-  Future<AsyncCanonicalizeResult?> _canonicalize(
-      AsyncImporter importer, Uri url, Uri? baseUrl, bool forImport,
-      {bool resolveUrl = false}) async {
-    var resolved =
-        resolveUrl && baseUrl != null ? baseUrl.resolveUri(url) : url;
-    var canonicalize = forImport
-        ? () => inImportRule(() => importer.canonicalize(resolved))
-        : () => importer.canonicalize(resolved);
-
+  /// This returns both the result of the call to `canonicalize()` and whether
+  /// that result is cacheable at all.
+  Future<(AsyncCanonicalizeResult?, bool cacheable)> _canonicalize(
+    AsyncImporter importer,
+    Uri url,
+    Uri? baseUrl,
+    bool forImport,
+  ) async {
     var passContainingUrl = baseUrl != null &&
         (url.scheme == '' || await importer.isNonCanonicalScheme(url.scheme));
-    var result = await withContainingUrl(
-        passContainingUrl ? baseUrl : null, canonicalize);
-    if (result == null) return null;
 
-    if (result.scheme == '') {
-      _logger.warnForDeprecation(
-          Deprecation.relativeCanonical,
-          "Importer $importer canonicalized $resolved to $result.\n"
-          "Relative canonical URLs are deprecated and will eventually be "
-          "disallowed.");
-    } else if (await importer.isNonCanonicalScheme(result.scheme)) {
-      throw "Importer $importer canonicalized $resolved to $result, which "
-          "uses a scheme declared as non-canonical.";
+    var canonicalizeContext = CanonicalizeContext(
+      passContainingUrl ? baseUrl : null,
+      forImport,
+    );
+
+    var result = await withCanonicalizeContext(
+      canonicalizeContext,
+      () => importer.canonicalize(url),
+    );
+
+    var cacheable =
+        !passContainingUrl || !canonicalizeContext.wasContainingUrlAccessed;
+
+    if (result == null) return (null, cacheable);
+
+    // Relative canonical URLs (empty scheme) should throw an error starting in
+    // Dart Sass 2.0.0, but for now, they only emit a deprecation warning in
+    // the evaluator.
+    if (result.scheme != '' &&
+        await importer.isNonCanonicalScheme(result.scheme)) {
+      throw "Importer $importer canonicalized $url to $result, which uses a "
+          "scheme declared as non-canonical.";
     }
 
-    return (importer, result, originalUrl: resolved);
+    return ((importer, result, originalUrl: url), cacheable);
   }
 
   /// Tries to import [url] using one of this cache's importers.
@@ -217,15 +279,24 @@ final class AsyncImportCache {
   /// parsed stylesheet. Otherwise, returns `null`.
   ///
   /// Caches the result of the import and uses cached results if possible.
-  Future<(AsyncImporter, Stylesheet)?> import(Uri url,
-      {AsyncImporter? baseImporter,
-      Uri? baseUrl,
-      bool forImport = false}) async {
-    if (await canonicalize(url,
-            baseImporter: baseImporter, baseUrl: baseUrl, forImport: forImport)
+  Future<(AsyncImporter, Stylesheet)?> import(
+    Uri url, {
+    AsyncImporter? baseImporter,
+    Uri? baseUrl,
+    bool forImport = false,
+  }) async {
+    if (await canonicalize(
+      url,
+      baseImporter: baseImporter,
+      baseUrl: baseUrl,
+      forImport: forImport,
+    )
         case (var importer, var canonicalUrl, :var originalUrl)) {
-      return (await importCanonical(importer, canonicalUrl,
-              originalUrl: originalUrl))
+      return (await importCanonical(
+        importer,
+        canonicalUrl,
+        originalUrl: originalUrl,
+      ))
           .andThen((stylesheet) => (importer, stylesheet));
     } else {
       return null;
@@ -241,24 +312,28 @@ final class AsyncImportCache {
   /// into [canonicalUrl]. It's used to resolve a relative canonical URL, which
   /// importers may return for legacy reasons.
   ///
-  /// If [quiet] is `true`, this will disable logging warnings when parsing the
-  /// newly imported stylesheet.
-  ///
   /// Caches the result of the import and uses cached results if possible.
-  Future<Stylesheet?> importCanonical(AsyncImporter importer, Uri canonicalUrl,
-      {Uri? originalUrl, bool quiet = false}) async {
+  Future<Stylesheet?> importCanonical(
+    AsyncImporter importer,
+    Uri canonicalUrl, {
+    Uri? originalUrl,
+  }) async {
     return await putIfAbsentAsync(_importCache, canonicalUrl, () async {
+      var loadTime = DateTime.now();
       var result = await importer.load(canonicalUrl);
       if (result == null) return null;
 
+      _loadTimes[canonicalUrl] = loadTime;
       _resultsCache[canonicalUrl] = result;
-      return Stylesheet.parse(result.contents, result.syntax,
-          // For backwards-compatibility, relative canonical URLs are resolved
-          // relative to [originalUrl].
-          url: originalUrl == null
-              ? canonicalUrl
-              : originalUrl.resolveUri(canonicalUrl),
-          logger: quiet ? Logger.quiet : _logger);
+      return Stylesheet.parse(
+        result.contents,
+        result.syntax,
+        // For backwards-compatibility, relative canonical URLs are resolved
+        // relative to [originalUrl].
+        url: originalUrl == null
+            ? canonicalUrl
+            : originalUrl.resolveUri(canonicalUrl),
+      );
     });
   }
 
@@ -269,11 +344,11 @@ final class AsyncImportCache {
       // If multiple original URLs canonicalize to the same thing, choose the
       // shortest one.
       minBy<Uri, int>(
-              _canonicalizeCache.values
-                  .whereNotNull()
-                  .where((result) => result.$2 == canonicalUrl)
-                  .map((result) => result.originalUrl),
-              (url) => url.path.length)
+        _canonicalizeCache.values.nonNulls
+            .where((result) => result.$2 == canonicalUrl)
+            .map((result) => result.originalUrl),
+        (url) => url.path.length,
+      )
           // Use the canonicalized basename so that we display e.g.
           // package:example/_example.scss rather than package:example/example
           // in stack traces.
@@ -288,16 +363,31 @@ final class AsyncImportCache {
   Uri sourceMapUrl(Uri canonicalUrl) =>
       _resultsCache[canonicalUrl]?.sourceMapUrl ?? canonicalUrl;
 
-  /// Clears the cached canonical version of the given [url].
-  ///
-  /// Has no effect if the canonical version of [url] has not been cached.
+  /// Returns the most recent time the stylesheet at [canonicalUrl] was loaded
+  /// from its importer, or `null` if it has never been loaded.
+  @internal
+  DateTime? loadTime(Uri canonicalUrl) => _loadTimes[canonicalUrl];
+
+  /// Clears all cached canonicalizations that could potentially produce
+  /// [canonicalUrl].
   ///
   /// @nodoc
   @internal
-  void clearCanonicalize(Uri url) {
-    _canonicalizeCache.remove((url, forImport: false));
-    _canonicalizeCache.remove((url, forImport: true));
-    _relativeCanonicalizeCache.removeWhere((key, _) => key.$1 == url);
+  Future<void> clearCanonicalize(Uri canonicalUrl) async {
+    for (var key in [..._canonicalizeCache.keys]) {
+      for (var importer in _importers) {
+        if (await importer.couldCanonicalize(key.$1, canonicalUrl)) {
+          _canonicalizeCache.remove(key);
+          break;
+        }
+      }
+    }
+
+    for (var key in [..._perImporterCanonicalizeCache.keys]) {
+      if (await key.$1.couldCanonicalize(key.$2, canonicalUrl)) {
+        _perImporterCanonicalizeCache.remove(key);
+      }
+    }
   }
 
   /// Clears the cached parse tree for the stylesheet with the given

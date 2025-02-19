@@ -6,17 +6,10 @@ import 'package:cli_pkg/js.dart';
 import 'package:node_interop/js.dart';
 
 import '../../importer.dart';
-import '../../js/importer.dart';
 import '../../js/url.dart';
 import '../../js/utils.dart';
-import '../../util/nullable.dart';
+import '../canonicalize_context.dart';
 import '../utils.dart';
-
-/// A filesystem importer to use for most implementation details of
-/// [JSToDartAsyncFileImporter].
-///
-/// This allows us to avoid duplicating logic between the two importers.
-final _filesystemImporter = FilesystemImporter('.');
 
 /// A wrapper for a potentially-asynchronous JS API file importer that exposes
 /// it as a Dart [AsyncImporter].
@@ -27,40 +20,44 @@ final class JSToDartFileImporter extends Importer {
   JSToDartFileImporter(this._findFileUrl);
 
   Uri? canonicalize(Uri url) {
-    if (url.scheme == 'file') return _filesystemImporter.canonicalize(url);
+    if (url.scheme == 'file') return FilesystemImporter.cwd.canonicalize(url);
 
-    var result = wrapJSExceptions(() => _findFileUrl(
-        url.toString(),
-        CanonicalizeContext(
-            fromImport: fromImport,
-            containingUrl: containingUrl.andThen(dartToJSUrl))));
+    var result = wrapJSExceptions(
+      () => _findFileUrl(url.toString(), canonicalizeContext),
+    );
     if (result == null) return null;
 
     if (isPromise(result)) {
-      jsThrow(JsError(
+      jsThrow(
+        JsError(
           "The findFileUrl() function can't return a Promise for synchron "
-          "compile functions."));
+          "compile functions.",
+        ),
+      );
     } else if (!isJSUrl(result)) {
       jsThrow(JsError("The findFileUrl() method must return a URL."));
     }
 
     var resultUrl = jsToDartUrl(result as JSUrl);
     if (resultUrl.scheme != 'file') {
-      jsThrow(JsError(
+      jsThrow(
+        JsError(
           'The findFileUrl() must return a URL with scheme file://, was '
-          '"$url".'));
+          '"$url".',
+        ),
+      );
     }
 
-    return _filesystemImporter.canonicalize(resultUrl);
+    return FilesystemImporter.cwd.canonicalize(resultUrl);
   }
 
-  ImporterResult? load(Uri url) => _filesystemImporter.load(url);
+  ImporterResult? load(Uri url) => FilesystemImporter.cwd.load(url);
 
   DateTime modificationTime(Uri url) =>
-      _filesystemImporter.modificationTime(url);
+      FilesystemImporter.cwd.modificationTime(url);
 
   bool couldCanonicalize(Uri url, Uri canonicalUrl) =>
-      _filesystemImporter.couldCanonicalize(url, canonicalUrl);
+      FilesystemImporter.cwd.couldCanonicalize(url, canonicalUrl);
 
   bool isNonCanonicalScheme(String scheme) => scheme != 'file';
 }
